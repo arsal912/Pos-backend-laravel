@@ -1,0 +1,66 @@
+<?php
+
+use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\RegisterController;
+use App\Http\Controllers\Api\Public\LandingController;
+use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('v1')->group(function () {
+
+    // ============================================
+    // PUBLIC ROUTES (no authentication required)
+    // ============================================
+    Route::prefix('public')->group(function () {
+        // Landing page data - protected by landing.enabled middleware
+        Route::middleware('landing.enabled')->group(function () {
+            Route::get('landing', [LandingController::class, 'index']);
+            Route::get('landing/plans', [LandingController::class, 'plans']);
+        });
+
+        // Status check - always accessible
+        Route::get('landing/status', [LandingController::class, 'status']);
+    });
+
+    // ============================================
+    // AUTHENTICATION ROUTES
+    // ============================================
+    Route::prefix('auth')->group(function () {
+        Route::post('login', [AuthController::class, 'login'])->middleware('throttle:auth');
+        Route::post('register', [RegisterController::class, 'register'])->middleware('throttle:auth');
+        Route::post('check-email', [RegisterController::class, 'checkEmail']);
+        Route::post('check-store-name', [RegisterController::class, 'checkStoreName']);
+
+        Route::middleware('auth:sanctum')->group(function () {
+            Route::get('me', [AuthController::class, 'me']);
+            Route::post('logout', [AuthController::class, 'logout']);
+            Route::post('logout-all', [AuthController::class, 'logoutAll']);
+        });
+    });
+
+    // ============================================
+    // ADMIN ROUTES (super admin only)
+    // ============================================
+    Route::prefix('admin')
+        ->middleware(['auth:sanctum', 'super.admin'])
+        ->group(base_path('routes/api/admin.php'));
+
+    // ============================================
+    // STORE ROUTES (tenant users)
+    // ============================================
+    Route::prefix('store')
+        ->middleware(['auth:sanctum', 'tenant.scope'])
+        ->group(base_path('routes/api/store.php'));
+});
+
+// Health check (outside v1 prefix for monitoring)
+Route::get('/health', fn () => response()->json([
+    'status' => 'ok',
+    'timestamp' => now()->toIso8601String(),
+    'app' => config('app.name'),
+]));
