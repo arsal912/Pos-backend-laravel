@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\RegisterController;
+use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Public\LandingController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +38,9 @@ Route::prefix('v1')->group(function () {
         Route::post('check-email', [RegisterController::class, 'checkEmail']);
         Route::post('check-store-name', [RegisterController::class, 'checkStoreName']);
         Route::post('email/verify', [EmailVerificationController::class, 'verify']);
+        Route::post('password/forgot', [PasswordResetController::class, 'forgot']);
+        Route::post('password/validate', [PasswordResetController::class, 'validateToken']);
+        Route::post('password/reset', [PasswordResetController::class, 'reset']);
 
         Route::middleware('auth:sanctum')->group(function () {
             Route::get('me', [AuthController::class, 'me']);
