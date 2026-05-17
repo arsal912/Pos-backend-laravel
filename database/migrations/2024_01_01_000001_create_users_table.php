@@ -17,9 +17,10 @@ return new class extends Migration
             $table->string('phone')->nullable();
             $table->string('avatar')->nullable();
 
-            // Multi-tenancy
-            $table->foreignId('store_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('branch_id')->nullable()->constrained()->nullOnDelete();
+            // Multi-tenancy: use nullable unsignedBigInteger columns
+            // Constraints are applied in a later migration to avoid ordering issues
+            $table->unsignedBigInteger('store_id')->nullable()->index();
+            $table->unsignedBigInteger('branch_id')->nullable()->index();
 
             // Flags
             $table->boolean('is_super_admin')->default(false);
