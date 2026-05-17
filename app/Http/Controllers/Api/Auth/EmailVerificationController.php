@@ -61,7 +61,12 @@ class EmailVerificationController extends Controller
         $token = EmailVerificationToken::generateFor($user);
         Mail::to($user->email)->send(new VerifyEmail($user, $token->token));
 
-        return $this->successResponse(['sent' => true], 'Verification email resent successfully.');
+        $response = ['sent' => true];
+        if (config('mail.default') === 'log' || app()->environment('local')) {
+            $response['verification_url'] = $token->getVerificationUrl();
+        }
+
+        return $this->successResponse($response, 'Verification email resent successfully.');
     }
 
     public function status(Request $request): JsonResponse

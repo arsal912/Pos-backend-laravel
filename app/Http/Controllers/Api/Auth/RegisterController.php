@@ -100,6 +100,8 @@ class RegisterController extends Controller
                 $verificationToken = EmailVerificationToken::generateFor($user);
                 Mail::to($user->email)->send(new VerifyEmail($user, $verificationToken->token));
 
+                $verificationUrl = $verificationToken->getVerificationUrl();
+
                 // 5. Create subscription (pending payment if paid plan)
                 if ($plan) {
                     Subscription::create([
@@ -122,7 +124,7 @@ class RegisterController extends Controller
             // Create auth token
             $token = $result['user']->createToken('registration')->plainTextToken;
 
-            return $this->successResponse([
+            $payload = [
                 'token' => $token,
                 'token_type' => 'Bearer',
                 'user' => [
@@ -153,7 +155,13 @@ class RegisterController extends Controller
                     ],
                 ],
                 'requires_payment' => ($result['plan']?->price ?? 0) > 0,
-            ], 'Registration successful', 201);
+            ];
+
+            if (config('mail.default') === 'log' || app()->environment('local')) {
+                $payload['verification_url'] = $verificationUrl;
+            }
+
+            return $this->successResponse($payload, 'Registration successful', 201);
         } catch (\Throwable $e) {
             return $this->errorResponse(
                 'Registration failed: ' . $e->getMessage(),

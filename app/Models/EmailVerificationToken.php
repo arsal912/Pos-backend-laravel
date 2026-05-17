@@ -39,6 +39,11 @@ class EmailVerificationToken extends Model
         ]);
     }
 
+    public function getVerificationUrl(): string
+    {
+        return rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/') . '/verify-email?token=' . $this->token;
+    }
+
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
