@@ -1,11 +1,11 @@
 <?php
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Cache\RateLimiter;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\RateLimiter;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -32,14 +32,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
-
-        // Rate limiters
-        RateLimiter::for('api', function (Request $request) {
+    })
+    ->booted(function () {
+        app(RateLimiter::class)->for('api', function (Request $request) {
             return Limit::perMinute((int) env('RATE_LIMIT_API', 120))
                 ->by($request->user()?->id ?: $request->ip());
         });
 
-        RateLimiter::for('auth', function (Request $request) {
+        app(RateLimiter::class)->for('auth', function (Request $request) {
             return Limit::perMinute((int) env('RATE_LIMIT_AUTH', 10))
                 ->by($request->ip());
         });
