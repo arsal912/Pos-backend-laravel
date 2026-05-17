@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Public\LandingController;
 use Illuminate\Support\Facades\Route;
@@ -35,11 +36,14 @@ Route::prefix('v1')->group(function () {
         Route::post('register', [RegisterController::class, 'register'])->middleware('throttle:auth');
         Route::post('check-email', [RegisterController::class, 'checkEmail']);
         Route::post('check-store-name', [RegisterController::class, 'checkStoreName']);
+        Route::post('email/verify', [EmailVerificationController::class, 'verify']);
 
         Route::middleware('auth:sanctum')->group(function () {
             Route::get('me', [AuthController::class, 'me']);
             Route::post('logout', [AuthController::class, 'logout']);
             Route::post('logout-all', [AuthController::class, 'logoutAll']);
+            Route::post('email/resend', [EmailVerificationController::class, 'resend']);
+            Route::get('email/status', [EmailVerificationController::class, 'status']);
         });
     });
 

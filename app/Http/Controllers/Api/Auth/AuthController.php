@@ -121,6 +121,7 @@ class AuthController extends Controller
                 'id' => $user->branch->id,
                 'name' => $user->branch->name,
             ] : null,
+            'email_verified_at' => optional($user->email_verified_at)->toDateTimeString(),
         ];
     }
 }

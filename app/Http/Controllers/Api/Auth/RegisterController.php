@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
+use App\Mail\VerifyEmail;
 use App\Models\Branch;
+use App\Models\EmailVerificationToken;
 use App\Models\Plan;
 use App\Models\Store;
 use App\Models\Subscription;
@@ -12,6 +14,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class RegisterController extends Controller
@@ -89,10 +92,13 @@ class RegisterController extends Controller
                     'branch_id' => $branch->id,
                     'is_super_admin' => false,
                     'is_active' => true,
-                    'email_verified_at' => now(), // auto-verify for now; add email verification later
+                    'email_verified_at' => null,
                 ]);
 
                 $user->assignRole('store-owner');
+
+                $verificationToken = EmailVerificationToken::generateFor($user);
+                Mail::to($user->email)->send(new VerifyEmail($user, $verificationToken->token));
 
                 // 5. Create subscription (pending payment if paid plan)
                 if ($plan) {
@@ -110,7 +116,7 @@ class RegisterController extends Controller
                     ]);
                 }
 
-                return compact('user', 'store', 'plan');
+                return compact('user', 'store', 'plan', 'branch');
             });
 
             // Create auth token
@@ -123,12 +129,28 @@ class RegisterController extends Controller
                     'id' => $result['user']->id,
                     'name' => $result['user']->name,
                     'email' => $result['user']->email,
-                ],
-                'store' => [
-                    'id' => $result['store']->id,
-                    'name' => $result['store']->name,
-                    'slug' => $result['store']->slug,
-                    'trial_ends_at' => $result['store']->trial_ends_at,
+                    'phone' => $result['user']->phone,
+                    'avatar' => $result['user']->avatar,
+                    'is_super_admin' => $result['user']->isSuperAdmin(),
+                    'is_active' => $result['user']->is_active,
+                    'store_id' => $result['user']->store_id,
+                    'branch_id' => $result['user']->branch_id,
+                    'roles' => $result['user']->getRoleNames(),
+                    'permissions' => $result['user']->getAllPermissions()->pluck('name'),
+                    'email_verified_at' => $result['user']->email_verified_at,
+                    'store' => [
+                        'id' => $result['store']->id,
+                        'name' => $result['store']->name,
+                        'slug' => $result['store']->slug,
+                        'logo' => $result['store']->logo,
+                        'currency' => $result['store']->currency,
+                        'status' => $result['store']->status,
+                        'trial_ends_at' => $result['store']->trial_ends_at,
+                    ],
+                    'branch' => [
+                        'id' => $result['user']->branch_id,
+                        'name' => $result['branch']->name,
+                    ],
                 ],
                 'requires_payment' => ($result['plan']?->price ?? 0) > 0,
             ], 'Registration successful', 201);
