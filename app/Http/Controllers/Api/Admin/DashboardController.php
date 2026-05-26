@@ -5,9 +5,8 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
 use App\Models\ApiLog;
-use App\Models\Payment;
 use App\Models\Store;
-use App\Models\Subscription;
+use App\Models\StoreAggregate;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 
@@ -21,17 +20,12 @@ class DashboardController extends Controller
         $activeStores = Store::where('status', 'active')->where('is_active', true)->count();
         $suspendedStores = Store::where('status', 'suspended')->count();
 
-        $totalRevenue = Payment::where('status', 'completed')->sum('amount');
-        $monthRevenue = Payment::where('status', 'completed')
-            ->whereMonth('paid_at', now()->month)
-            ->whereYear('paid_at', now()->year)
-            ->sum('amount');
-        $todayRevenue = Payment::where('status', 'completed')
-            ->whereDate('paid_at', today())
-            ->sum('amount');
+        $totalRevenue = StoreAggregate::sum('total_revenue');
+        $monthRevenue = StoreAggregate::sum('month_revenue');
+        $todayRevenue = StoreAggregate::sum('today_revenue');
 
-        $expiringSoon = Subscription::where('status', 'active')
-            ->whereBetween('ends_at', [now(), now()->addDays(7)])
+        $expiringSoon = Store::where('status', 'active')
+            ->whereBetween('trial_ends_at', [now(), now()->addDays(7)])
             ->count();
 
         $newStoresThisMonth = Store::whereMonth('created_at', now()->month)
@@ -46,6 +40,28 @@ class DashboardController extends Controller
             ->limit(10)
             ->get(['id', 'method', 'endpoint', 'response_status', 'user_id', 'created_at']);
 
+        $recentStores = Store::with('aggregate')
+            ->latest()
+            ->limit(5)
+            ->get(['id', 'name', 'email', 'status', 'created_at'])
+            ->map(function ($store) {
+                return [
+                    'id' => $store->id,
+                    'name' => $store->name,
+                    'email' => $store->email,
+                    'status' => $store->status,
+                    'created_at' => $store->created_at,
+                    'aggregate' => $store->aggregate?->only([
+                        'branches_count',
+                        'subscriptions_count',
+                        'payments_count',
+                        'active_users_count',
+                        'total_revenue',
+                        'last_synced_at',
+                    ]),
+                ];
+            });
+
         return $this->successResponse([
             'stats' => [
                 'total_stores' => $totalStores,
@@ -59,7 +75,7 @@ class DashboardController extends Controller
                 'new_stores_this_month' => $newStoresThisMonth,
             ],
             'recent_errors' => $recentErrors,
-            'recent_stores' => Store::latest()->limit(5)->get(['id', 'name', 'email', 'status', 'created_at']),
+            'recent_stores' => $recentStores,
         ]);
     }
 }

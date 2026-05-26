@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
 use App\Mail\VerifyEmail;
 use App\Models\Branch;
+use App\Jobs\SyncStoreAggregate;
 use App\Models\EmailVerificationToken;
 use App\Models\Plan;
 use App\Models\Store;
@@ -13,9 +14,11 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Stancl\Tenancy\Database\DatabaseManager as TenancyDatabaseManager;
 
 class RegisterController extends Controller
 {
@@ -47,6 +50,8 @@ class RegisterController extends Controller
             'plan_id' => 'nullable|exists:plans,id',
         ]);
 
+        $result = null;
+
         try {
             $result = DB::transaction(function () use ($validated) {
                 // 1. Determine plan (default: free trial / cheapest)
@@ -73,23 +78,14 @@ class RegisterController extends Controller
                     ),
                 ]);
 
-                // 3. Create main branch
-                $branch = Branch::create([
-                    'store_id' => $store->id,
-                    'name' => 'Main Branch',
-                    'code' => 'MAIN',
-                    'is_main' => true,
-                    'is_active' => true,
-                ]);
-
-                // 4. Create owner user
+                // 3. Create owner user without branch assignment yet
                 $user = User::create([
                     'name' => $validated['name'],
                     'email' => $validated['email'],
                     'password' => $validated['password'],
                     'phone' => $validated['phone'] ?? null,
                     'store_id' => $store->id,
-                    'branch_id' => $branch->id,
+                    'branch_id' => null,
                     'is_super_admin' => false,
                     'is_active' => true,
                     'email_verified_at' => null,
@@ -97,29 +93,46 @@ class RegisterController extends Controller
 
                 $user->assignRole('store-owner');
 
-                $verificationToken = EmailVerificationToken::generateFor($user);
-                Mail::to($user->email)->send(new VerifyEmail($user, $verificationToken->token));
+                return compact('user', 'store', 'plan');
+            });
 
-                $verificationUrl = $verificationToken->getVerificationUrl();
+            $verificationToken = EmailVerificationToken::generateFor($result['user']);
+            Mail::to($result['user']->email)->send(new VerifyEmail($result['user'], $verificationToken->token));
+            $verificationUrl = $verificationToken->getVerificationUrl();
 
-                // 5. Create subscription (pending payment if paid plan)
-                if ($plan) {
+            $this->createTenantDatabaseAndRunMigrations($result['store']);
+
+            $branch = $result['store']->run(function ($tenant) {
+                return Branch::create([
+                    'store_id' => $tenant->id,
+                    'name' => 'Main Branch',
+                    'code' => 'MAIN',
+                    'is_main' => true,
+                    'is_active' => true,
+                ]);
+            });
+
+            $result['user']->branch_id = $branch->id;
+            $result['user']->save();
+
+            if ($result['plan']) {
+                $result['store']->run(function ($tenant) use ($result) {
                     Subscription::create([
-                        'store_id' => $store->id,
-                        'plan_id' => $plan->id,
-                        'status' => $plan->price > 0 ? 'pending' : 'active',
+                        'store_id' => $tenant->id,
+                        'plan_id' => $result['plan']->id,
+                        'status' => $result['plan']->price > 0 ? 'pending' : 'active',
                         'starts_at' => now(),
-                        'ends_at' => $plan->billing_cycle === 'yearly'
+                        'ends_at' => $result['plan']->billing_cycle === 'yearly'
                             ? now()->addYear()
                             : now()->addMonth(),
-                        'amount' => $plan->price,
-                        'currency' => $plan->currency,
-                        'billing_cycle' => $plan->billing_cycle,
+                        'amount' => $result['plan']->price,
+                        'currency' => $result['plan']->currency,
+                        'billing_cycle' => $result['plan']->billing_cycle,
                     ]);
-                }
+                });
+            }
 
-                return compact('user', 'store', 'plan', 'branch');
-            });
+            SyncStoreAggregate::dispatch($result['store']);
 
             // Create auth token
             $token = $result['user']->createToken('registration')->plainTextToken;
@@ -151,7 +164,7 @@ class RegisterController extends Controller
                     ],
                     'branch' => [
                         'id' => $result['user']->branch_id,
-                        'name' => $result['branch']->name,
+                        'name' => $branch->name,
                     ],
                 ],
                 'requires_payment' => ($result['plan']?->price ?? 0) > 0,
@@ -163,10 +176,43 @@ class RegisterController extends Controller
 
             return $this->successResponse($payload, 'Registration successful', 201);
         } catch (\Throwable $e) {
+            if ($result !== null) {
+                $this->cleanupFailedTenantSignup($result['store'], $result['user']);
+            }
+
             return $this->errorResponse(
                 'Registration failed: ' . $e->getMessage(),
                 500
             );
+        }
+    }
+
+    private function createTenantDatabaseAndRunMigrations(Store $store): void
+    {
+        $store->database()->makeCredentials();
+        app(TenancyDatabaseManager::class)->ensureTenantCanBeCreated($store);
+        $store->database()->manager()->createDatabase($store);
+
+        Artisan::call('tenants:migrate', [
+            '--tenants' => [$store->getTenantKey()],
+            '--force' => true,
+        ]);
+    }
+
+    private function cleanupFailedTenantSignup(Store $store, User $user): void
+    {
+        try {
+            $tenantDatabaseName = $store->database()->getName();
+            $store->database()->manager()->deleteDatabase($store);
+        } catch (\Throwable $e) {
+            // Ignore cleanup failure.
+        }
+
+        try {
+            $user->delete();
+            $store->delete();
+        } catch (\Throwable $e) {
+            // Ignore cleanup failure.
         }
     }
 

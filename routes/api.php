@@ -62,7 +62,7 @@ Route::prefix('v1')->group(function () {
     // STORE ROUTES (tenant users)
     // ============================================
     Route::prefix('store')
-        ->middleware(['auth:sanctum', 'tenant.scope'])
+        ->middleware(['auth:sanctum', 'initialize.tenancy', 'tenant.scope'])
         ->group(base_path('routes/api/store.php'));
 });
 

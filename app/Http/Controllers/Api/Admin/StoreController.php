@@ -78,6 +78,11 @@ class StoreController extends Controller
     public function impersonate(int $id): JsonResponse
     {
         $store = Store::with('users')->findOrFail($id);
+
+        if (! $store->database()->manager()->databaseExists($store->database()->getName())) {
+            return $this->errorResponse('Tenant database is not available for this store.', 500);
+        }
+
         $owner = $store->users()->whereHas('roles', fn ($q) => $q->where('name', 'store-owner'))->first();
 
         if (!$owner) {

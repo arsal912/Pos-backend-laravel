@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('branches', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('store_id')->constrained()->cascadeOnDelete();
+            $table->unsignedBigInteger('store_id');
             $table->string('name');
             $table->string('code')->nullable();
             $table->text('address')->nullable();

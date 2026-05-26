@@ -55,37 +55,11 @@ return new class extends Migration
             $table->unique(['plan_id', 'module_id']);
         });
 
-        Schema::create('store_modules', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('store_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('module_id')->constrained()->cascadeOnDelete();
-            $table->boolean('is_enabled')->default(true);
-            $table->foreignId('enabled_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->text('notes')->nullable();
-            $table->timestamps();
-
-            $table->unique(['store_id', 'module_id']);
-            $table->index(['store_id', 'is_enabled']);
-        });
-
-        Schema::create('user_modules', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('module_id')->constrained()->cascadeOnDelete();
-            $table->boolean('is_enabled')->default(true);
-            $table->foreignId('overridden_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->text('notes')->nullable();
-            $table->timestamps();
-
-            $table->unique(['user_id', 'module_id']);
-            $table->index(['user_id', 'is_enabled']);
-        });
+        // Tenant-local module settings are migrated into tenant databases.
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('user_modules');
-        Schema::dropIfExists('store_modules');
         Schema::dropIfExists('plan_modules');
         Schema::dropIfExists('plans');
         Schema::dropIfExists('modules');

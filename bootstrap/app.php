@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Named middleware aliases
         $middleware->alias([
             'super.admin' => \App\Http\Middleware\SuperAdmin::class,
+            'initialize.tenancy' => \App\Http\Middleware\InitializeTenancyForAuthenticatedUser::class,
             'tenant.scope' => \App\Http\Middleware\TenantScope::class,
             'module' => \App\Http\Middleware\ModuleAccess::class,
             'landing.enabled' => \App\Http\Middleware\LandingPageEnabled::class,

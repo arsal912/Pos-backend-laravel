@@ -15,7 +15,6 @@ return new class extends Migration
 
             // Add foreign keys if they don't already exist
             $table->foreign('store_id')->references('id')->on('stores')->nullOnDelete();
-            $table->foreign('branch_id')->references('id')->on('branches')->nullOnDelete();
         });
     }
 

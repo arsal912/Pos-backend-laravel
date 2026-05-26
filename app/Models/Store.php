@@ -4,12 +4,22 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\StoreAggregate;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Stancl\Tenancy\Contracts\TenantWithDatabase;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
+use Stancl\Tenancy\Database\Concerns\HasDatabase;
+use Stancl\Tenancy\Database\Concerns\HasInternalKeys;
+use Stancl\Tenancy\Database\Concerns\TenantRun;
 
-class Store extends Model
+class Store extends Model implements TenantWithDatabase
 {
     use HasFactory;
+    use HasDatabase;
+    use HasInternalKeys;
+    use CentralConnection;
+    use TenantRun;
 
     protected $fillable = [
         'name',
@@ -36,6 +46,16 @@ class Store extends Model
         ];
     }
 
+    public function getTenantKeyName(): string
+    {
+        return $this->getKeyName();
+    }
+
+    public function getTenantKey()
+    {
+        return $this->getKey();
+    }
+
     /**
      * All users belonging to this store.
      */
@@ -58,6 +78,11 @@ class Store extends Model
     public function activeSubscription(): HasOne
     {
         return $this->hasOne(Subscription::class)->where('status', 'active')->latestOfMany();
+    }
+
+    public function aggregate(): HasOne
+    {
+        return $this->hasOne(StoreAggregate::class);
     }
 
     /**

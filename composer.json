@@ -6,20 +6,21 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "barryvdh/laravel-dompdf": "^3.0",
+        "guzzlehttp/guzzle": "^7.8",
+        "intervention/image": "^3.0",
         "laravel/framework": "^11.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.9",
-        "spatie/laravel-permission": "^6.0",
-        "intervention/image": "^3.0",
         "maatwebsite/excel": "^3.1",
-        "barryvdh/laravel-dompdf": "^3.0",
         "milon/barcode": "^11.0",
+        "paypal/paypal-checkout-sdk": "^1.0",
+        "predis/predis": "^2.2",
         "simplesoftwareio/simple-qrcode": "^4.2",
         "spatie/laravel-activitylog": "^4.8",
-        "predis/predis": "^2.2",
-        "stripe/stripe-php": "^14.0",
-        "paypal/paypal-checkout-sdk": "^1.0",
-        "guzzlehttp/guzzle": "^7.8"
+        "spatie/laravel-permission": "^6.0",
+        "stancl/tenancy": "^3.10",
+        "stripe/stripe-php": "^14.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
