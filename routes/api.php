@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Public\LandingController;
+use App\Http\Controllers\Api\Webhook\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -64,6 +65,9 @@ Route::prefix('v1')->group(function () {
     Route::prefix('store')
         ->middleware(['auth:sanctum', 'initialize.tenancy', 'tenant.scope'])
         ->group(base_path('routes/api/store.php'));
+
+    // Stripe webhook for payment events
+    Route::post('stripe/webhook', [StripeWebhookController::class, 'handle']);
 });
 
 // Health check (outside v1 prefix for monitoring)

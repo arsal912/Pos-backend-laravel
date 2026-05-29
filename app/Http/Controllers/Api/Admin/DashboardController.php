@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
 use App\Models\ApiLog;
+use App\Models\Payment;
+use App\Models\PaymentEvent;
 use App\Models\Store;
 use App\Models\StoreAggregate;
+use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 
@@ -33,6 +36,20 @@ class DashboardController extends Controller
             ->count();
 
         $totalUsers = User::where('is_super_admin', false)->count();
+
+        $totalSubscriptions = Subscription::count();
+        $activeSubscriptions = Subscription::where('status', 'active')->count();
+        $totalPayments = Payment::count();
+        $completedRevenue = Payment::where('status', 'completed')->sum('amount');
+        $pendingPayments = Payment::where('status', 'pending')->count();
+        $failedPayments = Payment::where('status', 'failed')->count();
+
+        $totalBillingEvents = PaymentEvent::count();
+        $billingEventsLast7Days = PaymentEvent::where('created_at', '>=', now()->subDays(7))->count();
+        $billingEventsByType = PaymentEvent::selectRaw('event_type, count(*) as count')
+            ->groupBy('event_type')
+            ->get()
+            ->mapWithKeys(fn ($item) => [$item->event_type => $item->count]);
 
         // Recent activity from API logs
         $recentErrors = ApiLog::errors()
@@ -62,12 +79,43 @@ class DashboardController extends Controller
                 ];
             });
 
+        $recentBillingEvents = PaymentEvent::with(['store:id,name', 'subscription:id,store_id,plan_id'])
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(function ($event) {
+                return [
+                    'id' => $event->id,
+                    'event_type' => $event->event_type,
+                    'gateway' => $event->gateway,
+                    'store' => $event->store?->only(['id', 'name']),
+                    'subscription_id' => $event->subscription_id,
+                    'payment_id' => $event->payment_id,
+                    'created_at' => $event->created_at,
+                ];
+            });
+
         return $this->successResponse([
             'stats' => [
                 'total_stores' => $totalStores,
                 'active_stores' => $activeStores,
                 'suspended_stores' => $suspendedStores,
                 'total_users' => $totalUsers,
+                'central_subscriptions' => [
+                    'total' => $totalSubscriptions,
+                    'active' => $activeSubscriptions,
+                ],
+                'central_payments' => [
+                    'total' => $totalPayments,
+                    'completed_revenue' => $completedRevenue,
+                    'pending' => $pendingPayments,
+                    'failed' => $failedPayments,
+                ],
+                'billing_events' => [
+                    'total' => $totalBillingEvents,
+                    'last_7_days' => $billingEventsLast7Days,
+                    'by_type' => $billingEventsByType,
+                ],
                 'total_revenue' => $totalRevenue,
                 'month_revenue' => $monthRevenue,
                 'today_revenue' => $todayRevenue,
@@ -76,6 +124,7 @@ class DashboardController extends Controller
             ],
             'recent_errors' => $recentErrors,
             'recent_stores' => $recentStores,
+            'recent_billing_events' => $recentBillingEvents,
         ]);
     }
 }

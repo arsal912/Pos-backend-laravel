@@ -9,6 +9,8 @@ class StoreAggregate extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql';
+
     protected $fillable = [
         'store_id',
         'tenant_database',

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Store\BillingController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -40,4 +41,14 @@ Route::middleware('module:reports')->get('reports/ping', function () {
         'success' => true,
         'message' => 'Reports module accessible',
     ]);
+});
+
+// Billing and subscription management
+Route::prefix('billing')->group(function () {
+    Route::get('gateways', [BillingController::class, 'gateways']);
+    Route::get('plans', [BillingController::class, 'plans']);
+    Route::get('subscription', [BillingController::class, 'subscription']);
+    Route::post('checkout', [BillingController::class, 'checkout']);
+    Route::get('checkout-status', [BillingController::class, 'checkoutStatus']);
+    Route::post('cancel', [BillingController::class, 'cancel']);
 });

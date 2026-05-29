@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\PaymentEvent;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,8 @@ class Subscription extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql';
+
     protected $fillable = [
         'store_id',
         'plan_id',
@@ -18,11 +21,15 @@ class Subscription extends Model
         'starts_at',
         'ends_at',
         'cancelled_at',
+        'grace_period_ends_at',
+        'next_billing_at',
+        'auto_renew',
+        'gateway_customer_id',
+        'payment_gateway',
+        'gateway_subscription_id',
         'amount',
         'currency',
         'billing_cycle',
-        'payment_gateway',
-        'gateway_subscription_id',
     ];
 
     protected function casts(): array
@@ -31,7 +38,10 @@ class Subscription extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'grace_period_ends_at' => 'datetime',
+            'next_billing_at' => 'datetime',
             'amount' => 'decimal:2',
+            'auto_renew' => 'boolean',
         ];
     }
 
@@ -48,6 +58,11 @@ class Subscription extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(PaymentEvent::class);
     }
 
     public function isActive(): bool

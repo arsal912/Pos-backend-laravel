@@ -3,7 +3,9 @@
 use App\Http\Controllers\Api\Admin\ApiLogController;
 use App\Http\Controllers\Api\Admin\DashboardController;
 use App\Http\Controllers\Api\Admin\LandingPageController;
+use App\Http\Controllers\Api\Admin\BillingController;
 use App\Http\Controllers\Api\Admin\ModuleController;
+use App\Http\Controllers\Api\Admin\PaymentGatewayController;
 use App\Http\Controllers\Api\Admin\StoreController;
 use Illuminate\Support\Facades\Route;
 
@@ -50,6 +52,23 @@ Route::prefix('modules')->group(function () {
     Route::get('user/{userId}', [ModuleController::class, 'getUserModules']);
     Route::put('user/{userId}/module/{moduleId}', [ModuleController::class, 'updateUserModule']);
     Route::delete('user/{userId}/module/{moduleId}', [ModuleController::class, 'removeUserModuleOverride']);
+});
+
+// Payment Gateways
+Route::prefix('payment-gateways')->group(function () {
+    Route::get('/', [PaymentGatewayController::class, 'index']);
+    Route::put('{slug}', [PaymentGatewayController::class, 'update']);
+    Route::post('{slug}/test', [PaymentGatewayController::class, 'test']);
+});
+
+// Central billing / subscription management
+Route::prefix('billing')->group(function () {
+    Route::get('subscriptions', [BillingController::class, 'subscriptions']);
+    Route::get('subscriptions/{id}', [BillingController::class, 'showSubscription']);
+    Route::get('payments', [BillingController::class, 'payments']);
+    Route::get('payments/{id}', [BillingController::class, 'showPayment']);
+    Route::get('events', [BillingController::class, 'events']);
+    Route::get('events/{id}', [BillingController::class, 'showEvent']);
 });
 
 // API Logs
