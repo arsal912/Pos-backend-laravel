@@ -61,8 +61,8 @@ class StripeService extends BasePaymentGateway
                     'subscription_id' => $subscription->id,
                     'plan_id' => $plan->id,
                 ],
-                'success_url' => config('app.url') . '/billing/success?session_id={CHECKOUT_SESSION_ID}',
-                'cancel_url' => config('app.url') . '/billing/canceled',
+                'success_url' => rtrim(env('FRONTEND_URL', config('app.url')), '/') . '/billing/success?session_id={CHECKOUT_SESSION_ID}',
+                'cancel_url' => rtrim(env('FRONTEND_URL', config('app.url')), '/') . '/billing/cancel',
             ]);
         } catch (ApiErrorException $e) {
             throw new \RuntimeException('Stripe checkout creation failed: ' . $e->getMessage());
@@ -274,6 +274,33 @@ class StripeService extends BasePaymentGateway
         ];
     }
 
+    public function changePlan(Subscription $subscription, \App\Models\Plan $newPlan): bool
+    {
+        if (! $subscription->gateway_subscription_id) {
+            return false;
+        }
+
+        $client = $this->getStripeClient();
+
+        try {
+            $stripeSub = $client->subscriptions->retrieve($subscription->gateway_subscription_id);
+            $itemId = $stripeSub->items->data[0]->id ?? null;
+
+            if (! $itemId || ! $newPlan->stripe_price_id) {
+                return false;
+            }
+
+            $client->subscriptions->update($subscription->gateway_subscription_id, [
+                'items' => [['id' => $itemId, 'price' => $newPlan->stripe_price_id]],
+                'proration_behavior' => 'create_prorations',
+            ]);
+
+            return true;
+        } catch (ApiErrorException $e) {
+            return false;
+        }
+    }
+
     public function testConnection(): bool
     {
         $client = $this->getStripeClient();
@@ -405,8 +432,15 @@ class StripeService extends BasePaymentGateway
         if ($subscription) {
             $this->updateSubscription($subscription, [
                 'status' => 'pending',
-                'grace_period_ends_at' => now()->addDays(7),
+                'grace_period_ends_at' => now()->addDays(3),
             ]);
+
+            try {
+                \Illuminate\Support\Facades\Mail::to($subscription->store->email)
+                    ->send(new \App\Mail\PaymentFailed($subscription, $invoice->status ?? null));
+            } catch (\Throwable) {
+                // Non-fatal — payment event already logged
+            }
         }
     }
 

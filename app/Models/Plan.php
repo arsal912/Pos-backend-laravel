@@ -27,6 +27,9 @@ class Plan extends Model
         'is_active',
         'is_featured',
         'sort_order',
+        'stripe_price_id',
+        'stripe_product_id',
+        'paypal_plan_id',
     ];
 
     protected function casts(): array

@@ -49,6 +49,9 @@ Route::prefix('billing')->group(function () {
     Route::get('plans', [BillingController::class, 'plans']);
     Route::get('subscription', [BillingController::class, 'subscription']);
     Route::post('checkout', [BillingController::class, 'checkout']);
-    Route::get('checkout-status', [BillingController::class, 'checkoutStatus']);
+    Route::get('sessions/{sessionId}', [BillingController::class, 'verifySession']);
     Route::post('cancel', [BillingController::class, 'cancel']);
+    Route::post('change-plan', [BillingController::class, 'changePlan']);
+    Route::get('payments', [BillingController::class, 'payments']);
+    Route::get('payments/{id}/invoice', [BillingController::class, 'invoice']);
 });

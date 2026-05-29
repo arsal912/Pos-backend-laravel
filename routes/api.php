@@ -66,7 +66,12 @@ Route::prefix('v1')->group(function () {
         ->middleware(['auth:sanctum', 'initialize.tenancy', 'tenant.scope'])
         ->group(base_path('routes/api/store.php'));
 
-    // Stripe webhook for payment events
+    // Payment gateway webhooks (CSRF-exempt, signature-verified)
+    Route::prefix('webhooks')->group(function () {
+        Route::post('stripe', [StripeWebhookController::class, 'handle']);
+    });
+
+    // Legacy alias kept for backward compat with already-registered Stripe dashboard URLs
     Route::post('stripe/webhook', [StripeWebhookController::class, 'handle']);
 });
 

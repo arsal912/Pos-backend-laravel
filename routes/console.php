@@ -2,7 +2,9 @@
 
 use App\Jobs\SyncStoreAggregate;
 use App\Models\ApiLog;
+use App\Models\Plan;
 use App\Models\Store;
+use App\Models\PaymentGateway;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -186,6 +188,81 @@ Artisan::command('tenancy:verify-existing-stores {--fix}', function () {
 
     $this->info('Tenant verification complete.');
 })->purpose('Verify tenant database setup and central aggregate records');
+
+/*
+ * Sync local Plans to Stripe Products + Prices.
+ * Stores stripe_product_id and stripe_price_id back on the plans table.
+ * Usage: php artisan stripe:sync-plans
+ */
+Artisan::command('stripe:sync-plans', function () {
+    $gateway = PaymentGateway::where('slug', 'stripe')->first();
+
+    if (! $gateway || ! $gateway->is_active) {
+        $this->warn('Stripe gateway is not active. Enable it in Admin → Payment Gateways first.');
+        return;
+    }
+
+    $credentials = $gateway->credentials;
+    $secretKey = $credentials['secret_key'] ?? null;
+
+    if (! $secretKey) {
+        $this->error('Stripe secret key not configured. Add it in Admin → Payment Gateways → Configure.');
+        return;
+    }
+
+    $stripe = new \Stripe\StripeClient($secretKey);
+    $plans = Plan::where('is_active', true)->where('price', '>', 0)->get();
+
+    if ($plans->isEmpty()) {
+        $this->info('No paid plans found to sync.');
+        return;
+    }
+
+    foreach ($plans as $plan) {
+        $this->line("Syncing plan: {$plan->name} (\${$plan->price}/{$plan->billing_cycle})");
+
+        try {
+            // Create or update Stripe Product
+            if ($plan->stripe_product_id) {
+                $product = $stripe->products->update($plan->stripe_product_id, [
+                    'name' => $plan->name,
+                    'description' => $plan->description ?? $plan->name,
+                ]);
+            } else {
+                $product = $stripe->products->create([
+                    'name' => $plan->name,
+                    'description' => $plan->description ?? $plan->name,
+                    'metadata' => ['plan_id' => $plan->id, 'plan_slug' => $plan->slug],
+                ]);
+            }
+
+            // Create a new Price (Stripe prices are immutable once created)
+            $interval = match ($plan->billing_cycle) {
+                'yearly' => 'year',
+                default  => 'month',
+            };
+
+            $price = $stripe->prices->create([
+                'product' => $product->id,
+                'unit_amount' => (int) round($plan->price * 100),
+                'currency' => strtolower($plan->currency ?? 'usd'),
+                'recurring' => ['interval' => $interval],
+                'metadata' => ['plan_id' => $plan->id],
+            ]);
+
+            $plan->update([
+                'stripe_product_id' => $product->id,
+                'stripe_price_id' => $price->id,
+            ]);
+
+            $this->info("  ✓ Product: {$product->id} | Price: {$price->id}");
+        } catch (\Stripe\Exception\ApiErrorException $e) {
+            $this->error("  ✗ Failed: {$e->getMessage()}");
+        }
+    }
+
+    $this->info('Stripe plan sync complete.');
+})->purpose('Sync local plans to Stripe Products and Prices');
 
 Artisan::command('phase2.5:verify {--fix}', function () {
     $fix = $this->option('fix');
