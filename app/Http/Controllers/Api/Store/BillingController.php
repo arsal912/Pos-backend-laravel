@@ -152,6 +152,35 @@ class BillingController extends Controller
         return $this->successResponse(['subscription' => $subscription], 'Subscription cancelled.');
     }
 
+    public function portal(PaymentGatewayManager $manager): \Illuminate\Http\JsonResponse
+    {
+        $store = auth()->user()->store;
+
+        if (! $store) {
+            return $this->notFoundResponse('Store not found.');
+        }
+
+        $subscription = $store->activeSubscription;
+
+        if (! $subscription || $subscription->payment_gateway !== 'stripe') {
+            return $this->errorResponse('Stripe Customer Portal is only available for Stripe subscriptions.', 400);
+        }
+
+        if (! $subscription->gateway_customer_id) {
+            return $this->errorResponse('No Stripe customer on record. Please contact support.', 400);
+        }
+
+        try {
+            /** @var \App\Services\PaymentGateways\StripeService $stripe */
+            $stripe = $manager->make('stripe');
+            $url    = $stripe->createCustomerPortalSession($subscription->gateway_customer_id);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Could not create portal session: ' . $e->getMessage(), 500);
+        }
+
+        return $this->successResponse(['url' => $url]);
+    }
+
     public function payments(Request $request): \Illuminate\Http\JsonResponse
     {
         $store = auth()->user()->store;
@@ -233,7 +262,7 @@ class BillingController extends Controller
                 'payment' => $payment,
                 'subscription' => $payment->subscription,
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Throwable) {
             return $this->errorResponse('Session not found or not yet processed.', 404);
         }
     }
@@ -278,7 +307,7 @@ class BillingController extends Controller
 
                     return $this->successResponse(['subscription' => $subscription->fresh('plan')], 'Plan updated.');
                 }
-            } catch (\Throwable $e) {
+            } catch (\Throwable) {
                 // Fall through to local-only update
             }
         }

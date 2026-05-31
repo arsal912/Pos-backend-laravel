@@ -63,10 +63,18 @@ Route::prefix('payment-gateways')->group(function () {
 
 // Central billing / subscription management
 Route::prefix('billing')->group(function () {
+    Route::get('stats', [BillingController::class, 'stats']);
+
     Route::get('subscriptions', [BillingController::class, 'subscriptions']);
     Route::get('subscriptions/{id}', [BillingController::class, 'showSubscription']);
+    Route::post('subscriptions/{id}/extend', [BillingController::class, 'extendSubscription']);
+    Route::post('subscriptions/{id}/cancel', [BillingController::class, 'cancelSubscription']);
+    Route::post('subscriptions/{id}/reactivate', [BillingController::class, 'reactivateSubscription']);
+
     Route::get('payments', [BillingController::class, 'payments']);
     Route::get('payments/{id}', [BillingController::class, 'showPayment']);
+    Route::post('payments/{id}/refund', [BillingController::class, 'refundPayment']);
+
     Route::get('events', [BillingController::class, 'events']);
     Route::get('events/{id}', [BillingController::class, 'showEvent']);
 });

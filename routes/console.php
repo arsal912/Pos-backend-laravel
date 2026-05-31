@@ -1,10 +1,16 @@
 <?php
 
 use App\Jobs\SyncStoreAggregate;
+use App\Mail\ManualRenewalReminder;
+use App\Mail\SubscriptionWarning;
+use App\Mail\SubscriptionExpired;
+use App\Mail\TrialEnded;
 use App\Models\ApiLog;
 use App\Models\Plan;
 use App\Models\Store;
+use App\Models\Subscription;
 use App\Models\PaymentGateway;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -194,6 +200,229 @@ Artisan::command('tenancy:verify-existing-stores {--fix}', function () {
  * Stores stripe_product_id and stripe_price_id back on the plans table.
  * Usage: php artisan stripe:sync-plans
  */
+// =============================================================================
+// SUBSCRIPTION LIFECYCLE COMMANDS
+// =============================================================================
+
+/*
+ * Send expiry warning emails (7d, 3d, 1d before expiry).
+ * Uses warning_sent_* flags to prevent duplicate sends.
+ * Scheduled daily at 1am.
+ */
+Artisan::command('subscriptions:check-expiring', function () {
+    $sent = 0;
+
+    foreach ([7, 3, 1] as $days) {
+        $field       = "warning_sent_{$days}d";
+        $windowStart = now()->addDays($days)->startOfDay();
+        $windowEnd   = now()->addDays($days)->endOfDay();
+
+        $subs = Subscription::with(['store', 'plan'])
+            ->where('status', 'active')
+            ->whereBetween('ends_at', [$windowStart, $windowEnd])
+            ->whereNull($field)
+            ->get();
+
+        foreach ($subs as $sub) {
+            if (! $sub->store?->email || ! $sub->plan) {
+                continue;
+            }
+
+            try {
+                Mail::to($sub->store->email)
+                    ->send(new SubscriptionWarning($sub, $days));
+
+                $sub->update([$field => now()]);
+                $sent++;
+                $this->line("  Sent {$days}d warning → {$sub->store->email}");
+            } catch (\Throwable $e) {
+                $this->error("  Failed for store {$sub->store_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    $this->info("Expiry warnings sent: {$sent}");
+})->purpose('Send subscription expiry warning emails at 7, 3, and 1 day before expiry');
+
+Schedule::command('subscriptions:check-expiring')->dailyAt('01:00');
+
+/*
+ * Expire subscriptions whose ends_at has passed (and grace period too).
+ * Sets subscription status=expired and store status=expired.
+ * Sends expiration email with reactivation link.
+ * Scheduled daily at 2am.
+ */
+Artisan::command('subscriptions:expire', function () {
+    $expired = 0;
+
+    $subs = Subscription::with(['store', 'plan'])
+        ->where('status', 'active')
+        ->where('ends_at', '<', now())
+        ->where(function ($q) {
+            $q->whereNull('grace_period_ends_at')
+              ->orWhere('grace_period_ends_at', '<', now());
+        })
+        ->get();
+
+    foreach ($subs as $sub) {
+        $sub->update(['status' => 'expired']);
+
+        // Mark the store as expired so TenantScope returns 402
+        if ($sub->store && $sub->store->status !== 'expired') {
+            $sub->store->update(['status' => 'expired']);
+        }
+
+        \App\Models\PaymentEvent::create([
+            'store_id'        => $sub->store_id,
+            'subscription_id' => $sub->id,
+            'event_type'      => 'subscription_expired',
+            'gateway'         => $sub->payment_gateway ?? 'system',
+            'data'            => ['expired_at' => now()->toDateTimeString()],
+        ]);
+
+        if ($sub->store?->email) {
+            try {
+                Mail::to($sub->store->email)
+                    ->send(new SubscriptionExpired($sub));
+                $this->line("  Expired + emailed → {$sub->store->email}");
+            } catch (\Throwable $e) {
+                $this->error("  Email failed for store {$sub->store_id}: {$e->getMessage()}");
+            }
+        }
+
+        $expired++;
+    }
+
+    $this->info("Subscriptions expired: {$expired}");
+})->purpose('Expire subscriptions past their end date and send expiration emails');
+
+Schedule::command('subscriptions:expire')->dailyAt('02:00');
+
+/*
+ * Expire stores whose free trial has ended with no active paid subscription.
+ * Sends trial-ended upgrade email.
+ * Scheduled daily at 2:30am.
+ */
+Artisan::command('trials:expire', function () {
+    $expired = 0;
+
+    $stores = Store::where('status', 'active')
+        ->whereNotNull('trial_ends_at')
+        ->where('trial_ends_at', '<', now())
+        ->whereDoesntHave('subscriptions', fn ($q) => $q->where('status', 'active'))
+        ->get();
+
+    foreach ($stores as $store) {
+        $store->update(['status' => 'expired']);
+
+        if ($store->email) {
+            try {
+                Mail::to($store->email)->send(new TrialEnded($store));
+                $this->line("  Trial expired + emailed → {$store->email}");
+            } catch (\Throwable $e) {
+                $this->error("  Email failed for store {$store->id}: {$e->getMessage()}");
+            }
+        }
+
+        $expired++;
+    }
+
+    $this->info("Trials expired: {$expired}");
+})->purpose('Expire stores whose free trial has ended with no active subscription');
+
+Schedule::command('trials:expire')->dailyAt('02:30');
+
+/*
+ * Retry failed Stripe invoice payments for subscriptions in grace period.
+ * For JazzCash/Easypaisa (no API retry): the manual reminder handles those.
+ * Scheduled daily at 3am.
+ */
+Artisan::command('subscriptions:retry-failed', function () {
+    $retried = 0;
+
+    $stripeSubs = Subscription::with(['store', 'plan'])
+        ->where('status', 'pending')
+        ->where('payment_gateway', 'stripe')
+        ->whereNotNull('gateway_subscription_id')
+        ->where('grace_period_ends_at', '>', now())
+        ->get()
+        // Skip subscriptions that already have 3+ failed payment attempts
+        ->filter(function ($sub) {
+            return \App\Models\Payment::where('subscription_id', $sub->id)
+                ->where('status', 'failed')
+                ->count() < 3;
+        });
+
+    if ($stripeSubs->isEmpty()) {
+        $this->info('No Stripe subscriptions to retry.');
+        return;
+    }
+
+    $gateway = PaymentGateway::where('slug', 'stripe')->first();
+    if (! $gateway?->is_active) {
+        $this->warn('Stripe gateway is not active — skipping retry.');
+        return;
+    }
+
+    foreach ($stripeSubs as $sub) {
+        $this->line("  Retrying Stripe sub {$sub->id} for store {$sub->store_id}...");
+
+        try {
+            // Build a raw Stripe client — invoices->pay() isn't on StripeService
+            $credentials = $gateway->credentials;
+            $client      = new \Stripe\StripeClient($credentials['secret_key'] ?? '');
+            $invoices    = $client->invoices->all([
+                'subscription' => $sub->gateway_subscription_id,
+                'status'       => 'open',
+                'limit'        => 1,
+            ]);
+
+            if (empty($invoices->data)) {
+                $this->line("    No open invoices found.");
+                continue;
+            }
+
+            $invoice = $invoices->data[0];
+            $client->invoices->pay($invoice->id);
+
+            // Success — clear grace period
+            $sub->update([
+                'status'               => 'active',
+                'grace_period_ends_at' => null,
+            ]);
+
+            $this->info("    Retry succeeded.");
+            $retried++;
+        } catch (\Stripe\Exception\ApiErrorException $e) {
+            // Stripe retry failed — increment counter, send another warning
+            $newCount = ($sub->retry_count ?? 0) + 1;
+            $sub->update([
+                'retry_count'   => $newCount,
+                'last_retry_at' => now(),
+            ]);
+
+            $this->error("    Retry failed ({$newCount}/3): {$e->getMessage()}");
+
+            if ($sub->store?->email) {
+                try {
+                    Mail::to($sub->store->email)
+                        ->send(new \App\Mail\PaymentFailed($sub, $e->getMessage()));
+                } catch (\Throwable) {
+                    // Non-fatal
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->error("    Unexpected error: {$e->getMessage()}");
+        }
+    }
+
+    $this->info("Stripe retries completed: {$retried}");
+})->purpose('Retry failed Stripe invoice payments for subscriptions in grace period');
+
+Schedule::command('subscriptions:retry-failed')->dailyAt('03:00');
+
+// =============================================================================
+
 Artisan::command('stripe:sync-plans', function () {
     $gateway = PaymentGateway::where('slug', 'stripe')->first();
 
@@ -263,6 +492,161 @@ Artisan::command('stripe:sync-plans', function () {
 
     $this->info('Stripe plan sync complete.');
 })->purpose('Sync local plans to Stripe Products and Prices');
+
+/*
+ * Sync local Plans to PayPal Products + Billing Plans.
+ * Stores paypal_plan_id back on the plans table.
+ * Usage: php artisan paypal:sync-plans
+ */
+/*
+ * Send renewal reminders for JazzCash and Easypaisa subscriptions
+ * (gateways that don't support auto-billing, so users must pay manually).
+ * Scheduled daily at 9am. Finds subs expiring in 1, 3, or 7 days.
+ * Usage: php artisan renewals:send-manual-reminders
+ */
+Artisan::command('renewals:send-manual-reminders', function () {
+    $gateways    = ['jazzcash', 'easypaisa'];
+    $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:3000'), '/');
+
+    $sent = 0;
+
+    foreach ([7, 3, 1] as $daysAhead) {
+        $windowStart = now()->addDays($daysAhead)->startOfDay();
+        $windowEnd   = now()->addDays($daysAhead)->endOfDay();
+
+        $subscriptions = Subscription::with(['store', 'plan'])
+            ->whereIn('payment_gateway', $gateways)
+            ->where('status', 'active')
+            ->whereBetween('next_billing_at', [$windowStart, $windowEnd])
+            ->get();
+
+        foreach ($subscriptions as $sub) {
+            if (! $sub->store?->email || ! $sub->plan) {
+                continue;
+            }
+
+            $renewUrl = $frontendUrl . '/billing/renew?subscription_id=' . $sub->id;
+
+            try {
+                Mail::to($sub->store->email)
+                    ->send(new ManualRenewalReminder($sub, $renewUrl, $sub->payment_gateway));
+                $sent++;
+                $this->line("  Sent {$daysAhead}d reminder → {$sub->store->email} ({$sub->payment_gateway})");
+            } catch (\Throwable $e) {
+                $this->error("  Failed for store {$sub->store_id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    $this->info("Renewal reminders sent: {$sent}");
+})->purpose('Send manual renewal reminders for JazzCash and Easypaisa subscriptions');
+
+// Schedule daily at 9am
+Schedule::command('renewals:send-manual-reminders')->dailyAt('09:00');
+
+Artisan::command('paypal:sync-plans', function () {
+    $gateway = PaymentGateway::where('slug', 'paypal')->first();
+
+    if (! $gateway || ! $gateway->is_active) {
+        $this->warn('PayPal gateway is not active. Enable it in Admin → Payment Gateways first.');
+        return;
+    }
+
+    $credentials  = $gateway->credentials;
+    $clientId     = $credentials['client_id'] ?? null;
+    $clientSecret = $credentials['client_secret'] ?? null;
+
+    if (! $clientId || ! $clientSecret) {
+        $this->error('PayPal client_id and client_secret not configured.');
+        return;
+    }
+
+    $mode    = $credentials['mode'] ?? env('PAYPAL_MODE', 'sandbox');
+    $baseUrl = $mode === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
+    $http    = new \GuzzleHttp\Client(['timeout' => 30]);
+
+    // Get OAuth token
+    $tokenRes = $http->post("{$baseUrl}/v1/oauth2/token", [
+        'auth'        => [$clientId, $clientSecret],
+        'form_params' => ['grant_type' => 'client_credentials'],
+    ]);
+    $token = json_decode((string) $tokenRes->getBody(), true)['access_token'] ?? null;
+
+    if (! $token) {
+        $this->error('Failed to get PayPal access token. Check credentials.');
+        return;
+    }
+
+    $headers = ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json'];
+    $plans   = Plan::where('is_active', true)->where('price', '>', 0)->get();
+
+    if ($plans->isEmpty()) {
+        $this->info('No paid plans found to sync.');
+        return;
+    }
+
+    foreach ($plans as $plan) {
+        $this->line("Syncing plan: {$plan->name} (\${$plan->price}/{$plan->billing_cycle})");
+
+        try {
+            // Create PayPal Product
+            $productRes = $http->post("{$baseUrl}/v1/catalogs/products", [
+                'headers' => $headers,
+                'json'    => [
+                    'name'        => $plan->name,
+                    'description' => $plan->description ?? $plan->name,
+                    'type'        => 'SERVICE',
+                    'category'    => 'SOFTWARE',
+                ],
+            ]);
+            $product = json_decode((string) $productRes->getBody(), true);
+
+            // Create PayPal Billing Plan
+            $interval = match ($plan->billing_cycle) {
+                'yearly' => ['interval_unit' => 'YEAR', 'interval_count' => 1],
+                default  => ['interval_unit' => 'MONTH', 'interval_count' => 1],
+            };
+
+            $billingPlanRes = $http->post("{$baseUrl}/v1/billing/plans", [
+                'headers' => $headers,
+                'json'    => [
+                    'product_id'  => $product['id'],
+                    'name'        => $plan->name,
+                    'description' => $plan->description ?? $plan->name,
+                    'status'      => 'ACTIVE',
+                    'billing_cycles' => [
+                        [
+                            'frequency'       => $interval,
+                            'tenure_type'     => 'REGULAR',
+                            'sequence'        => 1,
+                            'total_cycles'    => 0,
+                            'pricing_scheme'  => [
+                                'fixed_price' => [
+                                    'value'         => (string) $plan->price,
+                                    'currency_code' => strtoupper($plan->currency ?? 'USD'),
+                                ],
+                            ],
+                        ],
+                    ],
+                    'payment_preferences' => [
+                        'auto_bill_outstanding'     => true,
+                        'setup_fee_failure_action'  => 'CONTINUE',
+                        'payment_failure_threshold' => 3,
+                    ],
+                ],
+            ]);
+            $billingPlan = json_decode((string) $billingPlanRes->getBody(), true);
+
+            $plan->update(['paypal_plan_id' => $billingPlan['id']]);
+
+            $this->info("  ✓ Product: {$product['id']} | Plan: {$billingPlan['id']}");
+        } catch (\Throwable $e) {
+            $this->error("  ✗ Failed: {$e->getMessage()}");
+        }
+    }
+
+    $this->info('PayPal plan sync complete.');
+})->purpose('Sync local plans to PayPal Products and Billing Plans');
 
 Artisan::command('phase2.5:verify {--fix}', function () {
     $fix = $this->option('fix');

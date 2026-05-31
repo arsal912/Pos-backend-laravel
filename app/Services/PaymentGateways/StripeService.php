@@ -274,6 +274,40 @@ class StripeService extends BasePaymentGateway
         ];
     }
 
+    public function createCustomerPortalSession(string $customerId): string
+    {
+        $client = $this->getStripeClient();
+        $frontendUrl = rtrim(env('FRONTEND_URL', config('app.url')), '/');
+
+        try {
+            $session = $client->billingPortal->sessions->create([
+                'customer'   => $customerId,
+                'return_url' => $frontendUrl . '/dashboard/billing',
+            ]);
+            return $session->url;
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Stripe portal session failed: ' . $e->getMessage());
+        }
+    }
+
+    public function refund(\App\Models\Payment $payment, float $amount): void
+    {
+        $client = $this->getStripeClient();
+
+        if (! $payment->gateway_payment_id) {
+            throw new \RuntimeException('No gateway payment ID to refund.');
+        }
+
+        try {
+            $client->refunds->create([
+                'payment_intent' => $payment->gateway_payment_id,
+                'amount'         => (int) round($amount * 100),
+            ]);
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Stripe refund failed: ' . $e->getMessage());
+        }
+    }
+
     public function changePlan(Subscription $subscription, \App\Models\Plan $newPlan): bool
     {
         if (! $subscription->gateway_subscription_id) {

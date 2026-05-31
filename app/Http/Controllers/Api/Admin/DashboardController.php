@@ -44,6 +44,15 @@ class DashboardController extends Controller
         $pendingPayments = Payment::where('status', 'pending')->count();
         $failedPayments = Payment::where('status', 'failed')->count();
 
+        $failedPayments7d = Payment::where('status', 'failed')
+            ->where('created_at', '>=', now()->subDays(7))
+            ->count();
+
+        $subscriptionsExpiring7d = Subscription::where('status', 'active')
+            ->where('ends_at', '<=', now()->addDays(7))
+            ->where('ends_at', '>=', now())
+            ->count();
+
         $totalBillingEvents = PaymentEvent::count();
         $billingEventsLast7Days = PaymentEvent::where('created_at', '>=', now()->subDays(7))->count();
         $billingEventsByType = PaymentEvent::selectRaw('event_type, count(*) as count')
@@ -110,7 +119,9 @@ class DashboardController extends Controller
                     'completed_revenue' => $completedRevenue,
                     'pending' => $pendingPayments,
                     'failed' => $failedPayments,
+                    'failed_7d' => $failedPayments7d,
                 ],
+                'subscriptions_expiring_7d' => $subscriptionsExpiring7d,
                 'billing_events' => [
                     'total' => $totalBillingEvents,
                     'last_7_days' => $billingEventsLast7Days,

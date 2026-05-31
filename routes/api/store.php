@@ -54,4 +54,5 @@ Route::prefix('billing')->group(function () {
     Route::post('change-plan', [BillingController::class, 'changePlan']);
     Route::get('payments', [BillingController::class, 'payments']);
     Route::get('payments/{id}/invoice', [BillingController::class, 'invoice']);
+    Route::post('portal', [BillingController::class, 'portal']);
 });
