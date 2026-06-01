@@ -2,6 +2,13 @@
 
 use App\Http\Controllers\Api\Store\BillingController;
 use App\Http\Controllers\Api\Store\CustomerController;
+use App\Http\Controllers\Api\Store\Crm\CommunicationController;
+use App\Http\Controllers\Api\Store\Crm\CreditController;
+use App\Http\Controllers\Api\Store\Crm\CustomerGroupController;
+use App\Http\Controllers\Api\Store\Crm\CustomerNoteController;
+use App\Http\Controllers\Api\Store\Crm\CustomerSegmentController;
+use App\Http\Controllers\Api\Store\Crm\GroupPricingController;
+use App\Http\Controllers\Api\Store\Crm\LoyaltyController;
 use App\Http\Controllers\Api\Store\Pos\PosController;
 use App\Http\Controllers\Api\Store\Pos\SaleController;
 use App\Http\Controllers\Api\Store\ReceiptTemplateController;
@@ -181,7 +188,6 @@ Route::middleware('module:suppliers')->group(function () {
 // PHASE 4 — CUSTOMERS  (module: customers)
 // ============================================================================
 Route::middleware('module:customers')->prefix('customers')->group(function () {
-    // lookup must be before /{id} to avoid route collision
     Route::get('lookup',         [CustomerController::class, 'lookup']);
     Route::get('/',              [CustomerController::class, 'index']);
     Route::post('/',             [CustomerController::class, 'store']);
@@ -189,6 +195,74 @@ Route::middleware('module:customers')->prefix('customers')->group(function () {
     Route::put('{id}',           [CustomerController::class, 'update'])->whereNumber('id');
     Route::delete('{id}',        [CustomerController::class, 'destroy'])->whereNumber('id');
     Route::get('{id}/purchases', [CustomerController::class, 'purchases'])->whereNumber('id');
+
+    // Phase 4C — notes
+    Route::get('{id}/notes',              [CustomerNoteController::class, 'index'])->whereNumber('id');
+    Route::post('{id}/notes',             [CustomerNoteController::class, 'store'])->whereNumber('id');
+    Route::delete('{id}/notes/{noteId}',  [CustomerNoteController::class, 'destroy'])->whereNumber('id')->whereNumber('noteId');
+
+    // Phase 4C — communications
+    Route::get('{id}/communications',  [CommunicationController::class, 'customerHistory'])->whereNumber('id');
+    Route::post('{id}/send-message',   [CommunicationController::class, 'sendMessage'])->whereNumber('id');
+
+    // Phase 4C — loyalty history
+    Route::get('{id}/loyalty-history', [LoyaltyController::class, 'history'])->whereNumber('id');
+    Route::post('{id}/loyalty/adjust', [LoyaltyController::class, 'manualAdjust'])->whereNumber('id');
+
+    // Phase 4C — credit history + payment
+    Route::get('{id}/credit-history',  [CreditController::class, 'history'])->whereNumber('id');
+    Route::post('{id}/credit/payment', [CreditController::class, 'recordPayment'])->whereNumber('id');
+});
+
+// ============================================================================
+// PHASE 4C — CUSTOMER GROUPS
+Route::middleware('module:customer-groups')->prefix('customer-groups')->group(function () {
+    Route::get('/',                         [CustomerGroupController::class, 'index']);
+    Route::get('{id}',                      [CustomerGroupController::class, 'show'])->whereNumber('id');
+    Route::post('/',                        [CustomerGroupController::class, 'store']);
+    Route::put('{id}',                      [CustomerGroupController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',                   [CustomerGroupController::class, 'destroy'])->whereNumber('id');
+    Route::get('{id}/customers',            [CustomerGroupController::class, 'customers'])->whereNumber('id');
+    Route::post('{id}/bulk-assign',         [CustomerGroupController::class, 'bulkAssign'])->whereNumber('id');
+});
+
+// Group pricing on products (module:customer-groups)
+Route::middleware('module:customer-groups')->group(function () {
+    Route::get('products/{id}/group-prices',          [GroupPricingController::class, 'index'])->whereNumber('id');
+    Route::put('products/{id}/group-prices',          [GroupPricingController::class, 'upsert'])->whereNumber('id');
+    Route::delete('products/{id}/group-prices/{gid}', [GroupPricingController::class, 'destroy'])->whereNumber('id')->whereNumber('gid');
+});
+
+// ============================================================================
+// PHASE 4C — LOYALTY
+Route::middleware('module:loyalty')->prefix('loyalty')->group(function () {
+    Route::get('settings',       [LoyaltyController::class, 'getSettings']);
+    Route::put('settings',       [LoyaltyController::class, 'updateSettings']);
+    Route::get('stats',          [LoyaltyController::class, 'stats']);
+    Route::get('transactions',   [LoyaltyController::class, 'allTransactions']);
+});
+
+// ============================================================================
+// PHASE 4C — CREDIT
+Route::middleware('module:customer-credit')->prefix('credit')->group(function () {
+    Route::get('outstanding', [CreditController::class, 'outstanding']);
+    Route::get('aging',       [CreditController::class, 'aging']);
+    Route::get('payments',    [CreditController::class, 'payments']);
+});
+
+// ============================================================================
+// PHASE 4C — COMMUNICATIONS + SEGMENTS
+Route::middleware('module:customer-communications')->group(function () {
+    Route::get('communications',     [CommunicationController::class, 'index']);
+    Route::get('message-templates',  [CommunicationController::class, 'templates']);
+});
+
+Route::middleware('module:customers')->prefix('customer-segments')->group(function () {
+    Route::get('/',           [CustomerSegmentController::class, 'index']);
+    Route::post('/',          [CustomerSegmentController::class, 'store']);
+    Route::put('{id}',        [CustomerSegmentController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',     [CustomerSegmentController::class, 'destroy'])->whereNumber('id');
+    Route::post('{id}/preview',[CustomerSegmentController::class, 'preview'])->whereNumber('id');
 });
 
 // ============================================================================

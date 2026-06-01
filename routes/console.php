@@ -6,10 +6,15 @@ use App\Mail\SubscriptionWarning;
 use App\Mail\SubscriptionExpired;
 use App\Mail\TrialEnded;
 use App\Models\ApiLog;
+use App\Models\Customer;
+use App\Models\LoyaltySettings;
 use App\Models\Plan;
+use App\Models\Sale;
 use App\Models\Store;
 use App\Models\Subscription;
 use App\Models\PaymentGateway;
+use App\Services\LoyaltyService;
+use App\Services\CreditService;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -504,6 +509,154 @@ Artisan::command('stripe:sync-plans', function () {
  * Scheduled daily at 9am. Finds subs expiring in 1, 3, or 7 days.
  * Usage: php artisan renewals:send-manual-reminders
  */
+// =============================================================================
+// PHASE 4C — LOYALTY & CREDIT SCHEDULED COMMANDS
+// =============================================================================
+
+/*
+ * Expire loyalty points past their expires_at date.
+ * Runs across all tenant DBs that have loyalty tables.
+ * Scheduled daily at 1am.
+ */
+Artisan::command('loyalty:expire-points', function () {
+    $expired = 0;
+    Store::chunk(20, function ($stores) use (&$expired) {
+        foreach ($stores as $store) {
+            try {
+                $store->run(function () use (&$expired) {
+                    if (! Schema::hasTable('loyalty_transactions')) return;
+                    $settings = LoyaltySettings::current();
+                    if (! $settings->is_enabled || ! $settings->points_expiry_days) return;
+                    $service = app(LoyaltyService::class);
+                    $count   = $service->expirePoints();
+                    $expired += $count;
+                });
+            } catch (\Throwable $e) {
+                $this->error("Store {$store->id}: {$e->getMessage()}");
+            }
+        }
+    });
+    $this->info("Total points expired across all tenants: {$expired}");
+})->purpose('Expire loyalty points past their expiry date across all tenant DBs');
+
+Schedule::command('loyalty:expire-points')->dailyAt('01:00');
+
+/*
+ * Award birthday bonus points to customers whose birthday is today.
+ * Scheduled daily at 8am.
+ */
+Artisan::command('loyalty:birthday-bonuses', function () {
+    $awarded = 0;
+    Store::chunk(20, function ($stores) use (&$awarded) {
+        foreach ($stores as $store) {
+            try {
+                $store->run(function () use (&$awarded) {
+                    if (! Schema::hasTable('customers') || ! Schema::hasTable('loyalty_settings')) return;
+                    $settings = LoyaltySettings::current();
+                    if (! $settings->is_enabled || $settings->birthday_bonus_points <= 0) return;
+
+                    $today   = now()->format('m-d'); // MM-DD
+                    $service = app(LoyaltyService::class);
+
+                    Customer::whereRaw("DATE_FORMAT(date_of_birth, '%m-%d') = ?", [$today])
+                        ->where('is_active', true)
+                        ->each(function (Customer $c) use ($service, &$awarded) {
+                            $tx = $service->applyBirthdayBonus($c->id);
+                            if ($tx) $awarded++;
+                        });
+                });
+            } catch (\Throwable $e) {
+                $this->error("Store {$store->id}: {$e->getMessage()}");
+            }
+        }
+    });
+    $this->info("Birthday bonuses awarded: {$awarded}");
+})->purpose('Award birthday bonus points to customers whose birthday is today');
+
+Schedule::command('loyalty:birthday-bonuses')->dailyAt('08:00');
+
+/*
+ * Update customer lifetime stats (lifetime_value, total_purchases_count, last_purchase_at).
+ * Reads from the sales table in tenant DB and denormalizes onto customers row.
+ * Scheduled daily at 4am.
+ */
+Artisan::command('customers:update-lifetime-stats', function () {
+    $updated = 0;
+    Store::chunk(20, function ($stores) use (&$updated) {
+        foreach ($stores as $store) {
+            try {
+                $store->run(function () use (&$updated) {
+                    if (! Schema::hasTable('sales') || ! Schema::hasTable('customers')) return;
+
+                    DB::table('customers')
+                        ->where('is_active', true)
+                        ->whereNull('deleted_at')
+                        ->orderBy('id')
+                        ->each(function ($customer) use (&$updated) {
+                            $stats = DB::table('sales')
+                                ->where('customer_id', $customer->id)
+                                ->where('status', 'completed')
+                                ->selectRaw('COUNT(*) as count, SUM(total) as total, MAX(sale_date) as last')
+                                ->first();
+
+                            if (! $stats) return;
+
+                            DB::table('customers')->where('id', $customer->id)->update([
+                                'lifetime_value'       => (float) ($stats->total ?? 0),
+                                'total_purchases_count'=> (int)   ($stats->count ?? 0),
+                                'last_purchase_at'     => $stats->last,
+                            ]);
+                            $updated++;
+                        });
+                });
+            } catch (\Throwable $e) {
+                $this->error("Store {$store->id}: {$e->getMessage()}");
+            }
+        }
+    });
+    $this->info("Customer lifetime stats updated: {$updated} customers");
+})->purpose('Denormalize customer lifetime_value, total_purchases_count, last_purchase_at from sales');
+
+Schedule::command('customers:update-lifetime-stats')->dailyAt('04:00');
+
+/*
+ * Recompute customer credit balances from credit_transactions (integrity check).
+ * Reports discrepancies. Scheduled weekly Sunday at 4am.
+ */
+Artisan::command('credit:recompute-balances', function () {
+    $checked = 0; $fixed = 0;
+    Store::chunk(20, function ($stores) use (&$checked, &$fixed) {
+        foreach ($stores as $store) {
+            try {
+                $store->run(function () use (&$checked, &$fixed) {
+                    if (! Schema::hasTable('credit_transactions') || ! Schema::hasTable('customers')) return;
+                    $service = app(CreditService::class);
+
+                    Customer::where('outstanding_balance', '>', 0)->each(function (Customer $c) use ($service, &$checked, &$fixed) {
+                        $checked++;
+                        $computed = DB::table('credit_transactions')
+                            ->where('customer_id', $c->id)
+                            ->sum('amount');
+                        $computed = max(0, (float) $computed);
+
+                        if (abs($computed - (float) $c->outstanding_balance) > 0.01) {
+                            $service->recompute($c->id);
+                            $fixed++;
+                        }
+                    });
+                });
+            } catch (\Throwable $e) {
+                $this->error("Store {$store->id}: {$e->getMessage()}");
+            }
+        }
+    });
+    $this->info("Credit balances checked: {$checked}, discrepancies fixed: {$fixed}");
+})->purpose('Recompute customer credit balances from credit_transactions for integrity check');
+
+Schedule::command('credit:recompute-balances')->weeklyOn(0, '04:00'); // Sunday 4am
+
+// =============================================================================
+
 Artisan::command('renewals:send-manual-reminders', function () {
     $gateways    = ['jazzcash', 'easypaisa'];
     $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:3000'), '/');

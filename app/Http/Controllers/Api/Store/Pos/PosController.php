@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Store\Pos;
 
+use App\Exceptions\CreditLimitExceededException;
 use App\Exceptions\InsufficientStockException;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
@@ -13,6 +14,8 @@ use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalePayment;
+use App\Services\CreditService;
+use App\Services\LoyaltyService;
 use App\Services\StockService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -23,7 +26,11 @@ class PosController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private StockService $stock) {}
+    public function __construct(
+        private StockService $stock,
+        private LoyaltyService $loyalty,
+        private CreditService $credit,
+    ) {}
 
     // =========================================================================
     // Cart / Draft Sale Operations
@@ -318,9 +325,25 @@ class PosController extends Controller
             );
         }
 
+        // Pre-validate credit payment if any
+        $creditPayments = $sale->payments->where('method', 'on_credit');
+        if ($creditPayments->isNotEmpty() && $sale->customer_id) {
+            $creditAmount = (float) $creditPayments->sum('amount');
+            $customer = \App\Models\Customer::find($sale->customer_id);
+            if ($customer && ! $customer->canTakeCredit($creditAmount)) {
+                return $this->errorResponse(
+                    "Credit limit exceeded. Current outstanding: {$customer->outstanding_balance}, " .
+                    "Limit: {$customer->credit_limit}, Requested: {$creditAmount}",
+                    422
+                );
+            }
+        }
+
+        $loyaltyEarned = null;
+
         try {
-            DB::transaction(function () use ($sale) {
-                // Deduct stock for each item
+            DB::transaction(function () use ($sale, $creditPayments, &$loyaltyEarned) {
+                // 1. Deduct stock
                 foreach ($sale->items as $item) {
                     if ($item->product?->track_stock) {
                         $this->stock->deductStock(
@@ -341,13 +364,35 @@ class PosController extends Controller
                     'payment_status' => 'paid',
                     'sale_date'      => now()->toDateString(),
                 ]);
+
+                // 2. Record credit sale if any payment is on_credit
+                if ($creditPayments->isNotEmpty() && $sale->customer_id) {
+                    foreach ($creditPayments as $cp) {
+                        $this->credit->addSaleOnCredit($sale->id, (float) $cp->amount);
+                    }
+                }
             });
+
+            // 3. Earn loyalty points (outside transaction — non-fatal)
+            if ($sale->customer_id) {
+                try {
+                    $loyaltyEarned = $this->loyalty->earnFromSale($sale->id);
+                } catch (\Throwable) { /* non-fatal */ }
+            }
+        } catch (CreditLimitExceededException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
         } catch (InsufficientStockException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
 
+        $freshSale = $sale->fresh(['items.product', 'payments', 'customer']);
+
         return $this->successResponse([
-            'sale' => $sale->fresh(['items.product', 'payments', 'customer']),
+            'sale'           => $freshSale,
+            'loyalty_earned' => $loyaltyEarned ? [
+                'points'       => (float) $loyaltyEarned->points,
+                'balance_after'=> (float) $loyaltyEarned->balance_after,
+            ] : null,
         ], 'Sale completed.');
     }
 

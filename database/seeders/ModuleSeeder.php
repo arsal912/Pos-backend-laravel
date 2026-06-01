@@ -29,10 +29,13 @@ class ModuleSeeder extends Seeder
             ['name' => 'Goods Received Note', 'slug' => 'grn', 'category' => 'inventory', 'icon' => 'clipboard-check', 'description' => 'Receive goods from suppliers'],
 
             // ============ PEOPLE ============
-            ['name' => 'Customer Management', 'slug' => 'customers', 'category' => 'people', 'icon' => 'users', 'description' => 'Manage customers and their data'],
-            ['name' => 'Loyalty Program', 'slug' => 'loyalty', 'category' => 'people', 'icon' => 'gift', 'description' => 'Customer loyalty points and rewards'],
-            ['name' => 'Supplier Management', 'slug' => 'suppliers', 'category' => 'people', 'icon' => 'truck', 'description' => 'Manage suppliers and vendors'],
-            ['name' => 'Staff Management', 'slug' => 'staff', 'category' => 'people', 'icon' => 'user-cog', 'description' => 'Manage employees and their roles'],
+            ['name' => 'Customer Management',     'slug' => 'customers',                'category' => 'people', 'icon' => 'users',           'description' => 'Manage customers and their data'],
+            ['name' => 'Loyalty Program',         'slug' => 'loyalty',                  'category' => 'people', 'icon' => 'gift',             'description' => 'Customer loyalty points and rewards'],
+            ['name' => 'Customer Credit',         'slug' => 'customer-credit',          'category' => 'people', 'icon' => 'credit-card',      'description' => 'Customer credit tabs and outstanding balance management'],
+            ['name' => 'Customer Groups',         'slug' => 'customer-groups',          'category' => 'people', 'icon' => 'users-round',      'description' => 'Group customers for pricing and segmentation'],
+            ['name' => 'Customer Communications', 'slug' => 'customer-communications',  'category' => 'people', 'icon' => 'message-circle',   'description' => 'SMS, email, and WhatsApp customer communications'],
+            ['name' => 'Supplier Management',     'slug' => 'suppliers',                'category' => 'people', 'icon' => 'truck',            'description' => 'Manage suppliers and vendors'],
+            ['name' => 'Staff Management',        'slug' => 'staff',                    'category' => 'people', 'icon' => 'user-cog',         'description' => 'Manage employees and their roles'],
 
             // ============ OPERATIONS ============
             ['name' => 'Multi-Branch', 'slug' => 'multi-branch', 'category' => 'operations', 'icon' => 'store', 'description' => 'Manage multiple store locations'],

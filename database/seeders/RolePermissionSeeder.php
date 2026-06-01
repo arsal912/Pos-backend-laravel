@@ -36,6 +36,18 @@ class RolePermissionSeeder extends Seeder
             'manage-branches',
             // Expenses
             'manage-expenses',
+            // Phase 4C — Loyalty
+            'view-loyalty', 'manage-loyalty',
+            // Phase 4C — Credit
+            'manage-customer-credit',
+            // Phase 4C — Customer groups
+            'manage-customer-groups',
+            // Phase 4C — Communications
+            'send-customer-communication',
+            // Phase 4C — Import
+            'import-customers',
+            // POS price override (mentioned in Step 7)
+            'edit-sale-price',
         ];
 
         foreach ($permissions as $perm) {
@@ -55,11 +67,17 @@ class RolePermissionSeeder extends Seeder
                 'view-suppliers', 'manage-suppliers',
                 'view-reports', 'export-reports',
                 'manage-expenses',
+                // Phase 4C
+                'view-loyalty', 'manage-loyalty',
+                'manage-customer-credit', 'manage-customer-groups',
+                'send-customer-communication', 'import-customers',
             ],
             'cashier' => [
                 'view-products',
                 'create-sales', 'view-sales',
                 'view-customers', 'manage-customers',
+                // Phase 4C — cashier can see loyalty balance but not adjust
+                'view-loyalty',
             ],
             'inventory-staff' => [
                 'view-products', 'edit-products',
