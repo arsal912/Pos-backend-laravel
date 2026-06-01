@@ -24,6 +24,7 @@ Route::get('dashboard', [DashboardController::class, 'index']);
 Route::prefix('stores')->group(function () {
     Route::get('/', [StoreController::class, 'index']);
     Route::get('{id}', [StoreController::class, 'show']);
+    Route::get('{id}/analytics', [StoreController::class, 'analytics']);
     Route::put('{id}/status', [StoreController::class, 'updateStatus']);
     Route::delete('{id}', [StoreController::class, 'destroy']);
     Route::post('{id}/impersonate', [StoreController::class, 'impersonate']);

@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
+use App\Jobs\SyncStoreAggregate;
 use App\Models\Store;
+use App\Models\StoreAggregate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class StoreController extends Controller
 {
@@ -101,5 +104,84 @@ class StoreController extends Controller
                 'store_name' => $store->name,
             ],
         ], 'Impersonation token generated');
+    }
+
+    /**
+     * Per-store analytics — queries tenant DB on demand.
+     * GET /admin/stores/{id}/analytics
+     */
+    public function analytics(int $id, Request $request): JsonResponse
+    {
+        $store     = Store::findOrFail($id);
+        $aggregate = StoreAggregate::where('store_id', $id)->first();
+        $days      = (int) $request->input('days', 30);
+
+        $salesByDay   = [];
+        $topProducts  = [];
+        $customerGrowth = [];
+
+        try {
+            $store->run(function () use ($days, &$salesByDay, &$topProducts, &$customerGrowth) {
+                if (! DB::getSchemaBuilder()->hasTable('sales')) {
+                    return;
+                }
+
+                // Daily sales for last N days
+                $salesByDay = DB::table('sales')
+                    ->where('status', 'completed')
+                    ->whereDate('sale_date', '>=', now()->subDays($days)->toDateString())
+                    ->groupBy('sale_date')
+                    ->select('sale_date', DB::raw('COUNT(*) as count'), DB::raw('SUM(total) as amount'))
+                    ->orderBy('sale_date')
+                    ->get()
+                    ->map(fn ($r) => ['date' => $r->sale_date, 'count' => (int) $r->count, 'amount' => (float) $r->amount])
+                    ->toArray();
+
+                // Top 10 products this month
+                if (DB::getSchemaBuilder()->hasTable('sale_items')) {
+                    $topProducts = DB::table('sale_items')
+                        ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+                        ->where('sales.status', 'completed')
+                        ->whereMonth('sales.sale_date', now()->month)
+                        ->whereYear('sales.sale_date', now()->year)
+                        ->groupBy('sale_items.product_name')
+                        ->select(
+                            'sale_items.product_name',
+                            DB::raw('SUM(sale_items.quantity) as qty_sold'),
+                            DB::raw('SUM(sale_items.line_total) as revenue')
+                        )
+                        ->orderByDesc('revenue')
+                        ->limit(10)
+                        ->get()
+                        ->toArray();
+                }
+
+                // Customer growth (new customers per day)
+                if (DB::getSchemaBuilder()->hasTable('customers')) {
+                    $customerGrowth = DB::table('customers')
+                        ->whereNull('deleted_at')
+                        ->whereDate('created_at', '>=', now()->subDays($days)->toDateString())
+                        ->groupBy(DB::raw('DATE(created_at)'))
+                        ->select(DB::raw('DATE(created_at) as date'), DB::raw('COUNT(*) as count'))
+                        ->orderBy('date')
+                        ->get()
+                        ->map(fn ($r) => ['date' => $r->date, 'count' => (int) $r->count])
+                        ->toArray();
+                }
+            });
+        } catch (\Throwable $e) {
+            // Return whatever data we got
+        }
+
+        // Trigger a fresh sync in the background
+        SyncStoreAggregate::dispatch($store);
+
+        return $this->successResponse([
+            'store'           => $store->only(['id', 'name', 'slug', 'email', 'status']),
+            'aggregate'       => $aggregate,
+            'sales_by_day'    => $salesByDay,
+            'top_products'    => $topProducts,
+            'customer_growth' => $customerGrowth,
+        ]);
     }
 }

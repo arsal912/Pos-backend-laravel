@@ -1,11 +1,22 @@
 <?php
 
 use App\Http\Controllers\Api\Store\BillingController;
+use App\Http\Controllers\Api\Store\CustomerController;
+use App\Http\Controllers\Api\Store\Pos\PosController;
+use App\Http\Controllers\Api\Store\Pos\SaleController;
+use App\Http\Controllers\Api\Store\ReceiptTemplateController;
+use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\Catalog\BrandController;
 use App\Http\Controllers\Api\Store\Catalog\CategoryController;
 use App\Http\Controllers\Api\Store\Catalog\ProductController;
 use App\Http\Controllers\Api\Store\Catalog\TaxRateController;
 use App\Http\Controllers\Api\Store\Catalog\UnitController;
+use App\Http\Controllers\Api\Store\Inventory\GrnController;
+use App\Http\Controllers\Api\Store\Inventory\InventoryController;
+use App\Http\Controllers\Api\Store\Inventory\PurchaseOrderController;
+use App\Http\Controllers\Api\Store\Inventory\StockAdjustmentController;
+use App\Http\Controllers\Api\Store\Inventory\StockTransferController;
+use App\Http\Controllers\Api\Store\Inventory\SupplierController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
@@ -109,6 +120,122 @@ Route::middleware('module:products')->group(function () {
 });
 
 // ============================================================================
+// PHASE 4 — INVENTORY  (module: inventory)
+// ============================================================================
+Route::middleware('module:inventory')->group(function () {
+
+    // Current stock state + movements
+    Route::get('inventory',                    [InventoryController::class, 'index']);
+    Route::get('inventory/movements',          [InventoryController::class, 'movements']);
+    Route::get('inventory/products/{id}',      [InventoryController::class, 'productStock'])->whereNumber('id');
+
+    // Stock adjustments
+    Route::prefix('stock-adjustments')->group(function () {
+        Route::get('/',              [StockAdjustmentController::class, 'index']);
+        Route::post('/',             [StockAdjustmentController::class, 'store']);
+        Route::post('{id}/approve',  [StockAdjustmentController::class, 'approve'])->whereNumber('id');
+        Route::post('{id}/reject',   [StockAdjustmentController::class, 'reject'])->whereNumber('id');
+    });
+
+    // Stock transfers (sub-module: stock-transfer)
+    Route::prefix('stock-transfers')->group(function () {
+        Route::get('/',              [StockTransferController::class, 'index']);
+        Route::post('/',             [StockTransferController::class, 'store']);
+        Route::post('{id}/send',     [StockTransferController::class, 'send'])->whereNumber('id');
+        Route::post('{id}/receive',  [StockTransferController::class, 'receive'])->whereNumber('id');
+    });
+});
+
+// ============================================================================
+// PHASE 4 — SUPPLIERS & PURCHASING  (module: suppliers / purchase-orders / grn)
+// ============================================================================
+Route::middleware('module:suppliers')->group(function () {
+
+    Route::prefix('suppliers')->group(function () {
+        Route::get('/',      [SupplierController::class, 'index']);
+        Route::get('{id}',   [SupplierController::class, 'show'])->whereNumber('id');
+        Route::post('/',     [SupplierController::class, 'store']);
+        Route::put('{id}',   [SupplierController::class, 'update'])->whereNumber('id');
+        Route::delete('{id}',[SupplierController::class, 'destroy'])->whereNumber('id');
+    });
+
+    Route::prefix('purchase-orders')->group(function () {
+        Route::get('/',             [PurchaseOrderController::class, 'index']);
+        Route::get('{id}',          [PurchaseOrderController::class, 'show'])->whereNumber('id');
+        Route::post('/',            [PurchaseOrderController::class, 'store']);
+        Route::put('{id}',          [PurchaseOrderController::class, 'update'])->whereNumber('id');
+        Route::post('{id}/send',    [PurchaseOrderController::class, 'send'])->whereNumber('id');
+        Route::post('{id}/cancel',  [PurchaseOrderController::class, 'cancel'])->whereNumber('id');
+        // Create GRN from PO
+        Route::post('{poId}/grns',  [GrnController::class, 'storeFromPo'])->whereNumber('poId');
+    });
+
+    Route::prefix('grns')->group(function () {
+        Route::get('/',      [GrnController::class, 'index']);
+        Route::get('{id}',   [GrnController::class, 'show'])->whereNumber('id');
+        Route::post('/',     [GrnController::class, 'store']);
+    });
+});
+
+// ============================================================================
+// PHASE 4 — CUSTOMERS  (module: customers)
+// ============================================================================
+Route::middleware('module:customers')->prefix('customers')->group(function () {
+    // lookup must be before /{id} to avoid route collision
+    Route::get('lookup',         [CustomerController::class, 'lookup']);
+    Route::get('/',              [CustomerController::class, 'index']);
+    Route::post('/',             [CustomerController::class, 'store']);
+    Route::get('{id}',           [CustomerController::class, 'show'])->whereNumber('id');
+    Route::put('{id}',           [CustomerController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',        [CustomerController::class, 'destroy'])->whereNumber('id');
+    Route::get('{id}/purchases', [CustomerController::class, 'purchases'])->whereNumber('id');
+});
+
+// ============================================================================
+// PHASE 4 — POS SALES  (module: pos-sales)
+// ============================================================================
+Route::middleware('module:pos-sales')->group(function () {
+
+    // ── Cart (draft sale) operations ─────────────────────────────────────────
+    Route::prefix('pos')->group(function () {
+        Route::get('sales',                    [PosController::class, 'createSale']);    // resume/check
+        Route::post('sales',                   [PosController::class, 'createSale']);
+        Route::post('sales/{id}/items',        [PosController::class, 'addItem'])->whereNumber('id');
+        Route::put('sales/{id}/items/{itemId}',[PosController::class, 'updateItem'])->whereNumber('id')->whereNumber('itemId');
+        Route::delete('sales/{id}/items/{itemId}', [PosController::class, 'removeItem'])->whereNumber('id')->whereNumber('itemId');
+        Route::post('sales/{id}/discount',     [PosController::class, 'applyDiscount'])->whereNumber('id');
+        Route::post('sales/{id}/customer',     [PosController::class, 'attachCustomer'])->whereNumber('id');
+        Route::post('sales/{id}/payments',     [PosController::class, 'addPayment'])->whereNumber('id');
+        Route::post('sales/{id}/complete',     [PosController::class, 'completeSale'])->whereNumber('id');
+        Route::post('sales/{id}/void',         [PosController::class, 'voidSale'])->whereNumber('id');
+        Route::get('sales/{id}/receipt',       [PosController::class, 'receipt'])->whereNumber('id');
+
+        // Hold (parked) sales
+        Route::post('hold',            [PosController::class, 'holdSale']);
+        Route::get('hold',             [PosController::class, 'listHeld']);
+        Route::post('hold/{id}/resume',[PosController::class, 'resumeHeld'])->whereNumber('id');
+        Route::delete('hold/{id}',     [PosController::class, 'deleteHeld'])->whereNumber('id');
+
+        // Cash drawer
+        Route::post('drawer/open',     [PosController::class, 'openDrawer']);
+        Route::get('drawer/current',   [PosController::class, 'currentDrawer']);
+        Route::post('drawer/close',    [PosController::class, 'closeDrawer']);
+        Route::get('drawer/history',   [PosController::class, 'drawerHistory']);
+    });
+
+    // ── Sale history ──────────────────────────────────────────────────────────
+    Route::prefix('sales')->group(function () {
+        Route::get('/',      [SaleController::class, 'index']);
+        Route::get('{id}',   [SaleController::class, 'show'])->whereNumber('id');
+    });
+
+    // ── Returns (permission: refund-sales) ────────────────────────────────────
+    Route::post('sales/{id}/returns',  [SaleController::class, 'createReturn'])->whereNumber('id');
+    Route::get('returns',              [SaleController::class, 'listReturns']);
+    Route::get('returns/{id}',         [SaleController::class, 'showReturn'])->whereNumber('id');
+});
+
+// ============================================================================
 // File serving — tenant-aware, auth required
 // ============================================================================
 Route::get('files/{path}', function (Request $request, string $path) {
@@ -120,6 +247,26 @@ Route::get('files/{path}', function (Request $request, string $path) {
     }
     return Storage::disk('local')->response($path);
 })->where('path', '.*');
+
+// ============================================================================
+// PHASE 4 — RECEIPT TEMPLATES & STORE SETTINGS
+// ============================================================================
+
+// Receipt templates
+Route::prefix('receipt-templates')->group(function () {
+    Route::get('/',                    [ReceiptTemplateController::class, 'index']);
+    Route::post('/',                   [ReceiptTemplateController::class, 'store']);
+    Route::get('{id}',                 [ReceiptTemplateController::class, 'show'])->whereNumber('id');
+    Route::put('{id}',                 [ReceiptTemplateController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',              [ReceiptTemplateController::class, 'destroy'])->whereNumber('id');
+    Route::get('{id}/preview',         [ReceiptTemplateController::class, 'preview'])->whereNumber('id');
+});
+
+// POS / store settings (key-value store in tenant DB)
+Route::prefix('settings')->group(function () {
+    Route::get('/',   [StoreSettingsController::class, 'index']);
+    Route::put('/',   [StoreSettingsController::class, 'update']);
+});
 
 // ============================================================================
 // Module ping routes (for client-side capability checks)

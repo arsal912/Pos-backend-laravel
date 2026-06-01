@@ -2,17 +2,16 @@
 
 namespace App\Jobs;
 
-use App\Models\Branch;
-use App\Models\Payment;
 use App\Models\Store;
 use App\Models\StoreAggregate;
-use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SyncStoreAggregate implements ShouldQueue
 {
@@ -27,54 +26,130 @@ class SyncStoreAggregate implements ShouldQueue
 
     public function handle(): void
     {
+        // Central-DB data (always available)
         $activeUsersCount = User::where('store_id', $this->store->id)
             ->where('is_active', true)
             ->count();
 
+        // Tenant-DB data
         $branchesCount = 0;
-        $subscriptionsCount = 0;
-        $paymentsCount = 0;
-        $totalRevenue = 0;
-        $monthRevenue = 0;
-        $todayRevenue = 0;
-        $lastPaymentAt = null;
+        $totalRevenue  = 0.0;
+        $monthRevenue  = 0.0;
+        $todayRevenue  = 0.0;
+        $lastSaleAt    = null;
+        $meta          = [];
 
         try {
-            tenancy()->initialize($this->store);
+            $this->store->run(function () use (
+                &$branchesCount, &$totalRevenue, &$monthRevenue,
+                &$todayRevenue, &$lastSaleAt, &$meta
+            ) {
+                $now = now();
 
-            $branchesCount = Branch::count();
-            $subscriptionsCount = Subscription::count();
-            $paymentsCount = Payment::count();
-            $totalRevenue = (float) Payment::where('status', 'completed')->sum('amount');
-            $monthRevenue = (float) Payment::where('status', 'completed')
-                ->whereMonth('paid_at', now()->month)
-                ->whereYear('paid_at', now()->year)
-                ->sum('amount');
-            $todayRevenue = (float) Payment::where('status', 'completed')
-                ->whereDate('paid_at', today())
-                ->sum('amount');
-            $lastPaymentAt = Payment::orderByDesc('paid_at')->value('paid_at');
-        } finally {
-            tenancy()->end();
+                // Branches (Phase 2.5)
+                $branchesCount = DB::table('branches')->count();
+
+                // Sales (Phase 4)
+                if (DB::getSchemaBuilder()->hasTable('sales')) {
+                    $completedSales = DB::table('sales')->where('status', 'completed');
+
+                    $totalRevenue = (float) (clone $completedSales)->sum('total');
+
+                    $monthRevenue = (float) (clone $completedSales)
+                        ->whereMonth('sale_date', $now->month)
+                        ->whereYear('sale_date', $now->year)
+                        ->sum('total');
+
+                    $todayRevenue = (float) (clone $completedSales)
+                        ->whereDate('sale_date', $now->toDateString())
+                        ->sum('total');
+
+                    $salesCountToday = (clone $completedSales)
+                        ->whereDate('sale_date', $now->toDateString())
+                        ->count();
+
+                    $salesMonthCount = (clone $completedSales)
+                        ->whereMonth('sale_date', $now->month)
+                        ->whereYear('sale_date', $now->year)
+                        ->count();
+
+                    $avgOrderToday = $salesCountToday > 0
+                        ? round($todayRevenue / $salesCountToday, 2)
+                        : 0;
+
+                    $lastSaleAt = DB::table('sales')
+                        ->where('status', 'completed')
+                        ->orderByDesc('sale_date')
+                        ->value('sale_date');
+
+                    // Top product today by line total
+                    $topProduct = DB::table('sale_items')
+                        ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+                        ->where('sales.status', 'completed')
+                        ->whereDate('sales.sale_date', $now->toDateString())
+                        ->groupBy('sale_items.product_name')
+                        ->select('sale_items.product_name', DB::raw('SUM(sale_items.line_total) as revenue'))
+                        ->orderByDesc('revenue')
+                        ->first();
+
+                    $meta['sales_today_count']  = $salesCountToday;
+                    $meta['sales_today_amount'] = $todayRevenue;
+                    $meta['sales_month_count']  = $salesMonthCount;
+                    $meta['avg_order_value']    = $avgOrderToday;
+                    $meta['top_product_today']  = $topProduct?->product_name;
+                }
+
+                // Products & Inventory (Phase 4)
+                if (DB::getSchemaBuilder()->hasTable('products')) {
+                    $meta['total_products'] = DB::table('products')
+                        ->whereNull('deleted_at')
+                        ->where('is_active', true)
+                        ->count();
+                }
+
+                if (DB::getSchemaBuilder()->hasTable('inventory_items')) {
+                    $meta['low_stock_count'] = DB::table('inventory_items')
+                        ->join('products', 'products.id', '=', 'inventory_items.product_id')
+                        ->whereNotNull('products.low_stock_threshold')
+                        ->whereRaw('inventory_items.quantity <= products.low_stock_threshold')
+                        ->whereNull('products.deleted_at')
+                        ->count();
+                }
+
+                // Customers (Phase 4)
+                if (DB::getSchemaBuilder()->hasTable('customers')) {
+                    $meta['total_customers'] = DB::table('customers')
+                        ->whereNull('deleted_at')
+                        ->count();
+
+                    $meta['new_customers_today'] = DB::table('customers')
+                        ->whereNull('deleted_at')
+                        ->whereDate('created_at', now()->toDateString())
+                        ->count();
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::warning("SyncStoreAggregate failed for store {$this->store->id}: {$e->getMessage()}");
         }
+
+        // Merge new meta with existing to preserve fields from other sync paths
+        $existingMeta = StoreAggregate::where('store_id', $this->store->id)->value('meta') ?? [];
 
         StoreAggregate::updateOrCreate(
             ['store_id' => $this->store->id],
             [
-                'tenant_database' => $this->store->database()->getName(),
-                'branches_count' => $branchesCount,
-                'subscriptions_count' => $subscriptionsCount,
-                'payments_count' => $paymentsCount,
+                'tenant_database'    => $this->store->database()->getName(),
+                'branches_count'     => $branchesCount,
                 'active_users_count' => $activeUsersCount,
-                'total_revenue' => $totalRevenue,
-                'month_revenue' => $monthRevenue,
-                'today_revenue' => $todayRevenue,
-                'last_payment_at' => $lastPaymentAt,
-                'last_synced_at' => now(),
-                'meta' => [
-                    'store_slug' => $this->store->slug,
-                    'store_status' => $this->store->status,
-                ],
+                'total_revenue'      => $totalRevenue,
+                'month_revenue'      => $monthRevenue,
+                'today_revenue'      => $todayRevenue,
+                'last_payment_at'    => $lastSaleAt,
+                'last_synced_at'     => now(),
+                'meta'               => array_merge(
+                    is_array($existingMeta) ? $existingMeta : [],
+                    $meta
+                ),
             ]
         );
     }
