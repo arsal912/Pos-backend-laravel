@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AdminReportController;
 use App\Http\Controllers\Api\Admin\ApiLogController;
 use App\Http\Controllers\Api\Admin\DashboardController;
 use App\Http\Controllers\Api\Admin\LandingPageController;
@@ -78,6 +79,14 @@ Route::prefix('billing')->group(function () {
 
     Route::get('events', [BillingController::class, 'events']);
     Route::get('events/{id}', [BillingController::class, 'showEvent']);
+});
+
+// Platform-wide Admin Reports
+Route::prefix('reports')->group(function () {
+    Route::get('/',                    [AdminReportController::class, 'index']);
+    Route::get('{slug}/schema',        [AdminReportController::class, 'schema']);
+    Route::post('{slug}/run',          [AdminReportController::class, 'run']);
+    Route::post('{slug}/export',       [AdminReportController::class, 'export']);
 });
 
 // API Logs

@@ -13,8 +13,11 @@ use App\Models\Sale;
 use App\Models\Store;
 use App\Models\Subscription;
 use App\Models\PaymentGateway;
+use App\Models\ScheduledReport;
 use App\Services\LoyaltyService;
 use App\Services\CreditService;
+use App\Services\Reports\ReportManager;
+use App\Services\Reports\ReportExporter;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -24,6 +27,17 @@ use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Database\DatabaseManager as TenancyDatabaseManager;
+
+/*
+ * Seed demo data into a tenant DB for report testing.
+ * Usage: php artisan tenant:seed-demo {storeId}
+ * Creates ~500 sales, 30 customers, 12 products over 90 days.
+ */
+Artisan::command('tenant:seed-demo {storeId}', function ($storeId) {
+    $seeder = new \Database\Seeders\DemoDataSeeder();
+    $seeder->setCommand($this);
+    $seeder->run((int) $storeId);
+})->purpose('Seed demo data into a tenant DB for Phase 4D report testing');
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -509,6 +523,89 @@ Artisan::command('stripe:sync-plans', function () {
  * Scheduled daily at 9am. Finds subs expiring in 1, 3, or 7 days.
  * Usage: php artisan renewals:send-manual-reminders
  */
+// =============================================================================
+// PHASE 4D — SCHEDULED REPORTS DISPATCH
+// =============================================================================
+
+/*
+ * Check all tenant DBs for scheduled reports that are due and log them.
+ * In Phase 5, this will send real emails with attachments.
+ * Runs every 15 minutes.
+ * Usage: php artisan reports:dispatch-scheduled
+ */
+Artisan::command('reports:dispatch-scheduled', function () {
+    $dispatched = 0;
+    $errors     = 0;
+
+    Store::where('status', 'active')->chunk(10, function ($stores) use (&$dispatched, &$errors) {
+        foreach ($stores as $store) {
+            try {
+                $store->run(function () use ($store, &$dispatched, &$errors) {
+                    if (! \Illuminate\Support\Facades\Schema::hasTable('scheduled_reports')) return;
+
+                    $due = ScheduledReport::where('is_active', true)->get()->filter->isDue();
+
+                    foreach ($due as $schedule) {
+                        try {
+                            $manager  = app(ReportManager::class);
+                            $exporter = app(ReportExporter::class);
+
+                            if (! $manager->has($schedule->report_slug)) continue;
+
+                            $report  = $manager->get($schedule->report_slug);
+                            $filters = array_merge($report->getDefaultFilters(), $schedule->filters ?? []);
+                            $result  = $report->run($filters);
+
+                            // Log to communication_logs for each recipient
+                            $body = "Scheduled Report: {$schedule->name}\n"
+                                  . "Generated: " . now()->toDateTimeString() . "\n"
+                                  . "Rows: " . $result->meta['row_count'] . "\n\n"
+                                  . implode("\n", array_map(
+                                        fn($c) => $c['label'] . ': ' . $c['value'],
+                                        $result->summary
+                                    ));
+
+                            foreach ($schedule->recipient_emails as $email) {
+                                \App\Models\CommunicationLog::create([
+                                    'customer_id'    => null,
+                                    'recipient'      => $email,
+                                    'channel'        => 'email',
+                                    'type'           => 'transactional',
+                                    'subject'        => "Scheduled Report: {$schedule->name}",
+                                    'body'           => $body,
+                                    'status'         => 'skipped',
+                                    'provider'       => 'logged_only',
+                                    'sent_at'        => now(),
+                                    'sent_by'        => 0,
+                                    'reference_type' => 'scheduled_report',
+                                    'reference_id'   => $schedule->id,
+                                ]);
+                            }
+
+                            $schedule->update([
+                                'last_sent_at' => now(),
+                                'last_status'  => 'success',
+                                'last_error'   => null,
+                            ]);
+
+                            $dispatched++;
+                        } catch (\Throwable $e) {
+                            $schedule->update(['last_status'=>'error','last_error'=>$e->getMessage()]);
+                            $errors++;
+                        }
+                    }
+                });
+            } catch (\Throwable $e) {
+                // Store may not have the table yet — skip
+            }
+        }
+    });
+
+    $this->info("Reports dispatched: {$dispatched}, errors: {$errors}");
+})->purpose('Dispatch due scheduled reports across all tenant DBs (Phase 5 will send real emails)');
+
+Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes();
+
 // =============================================================================
 // PHASE 4C — LOYALTY & CREDIT SCHEDULED COMMANDS
 // =============================================================================

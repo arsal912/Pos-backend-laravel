@@ -48,6 +48,10 @@ class RolePermissionSeeder extends Seeder
             'import-customers',
             // POS price override (mentioned in Step 7)
             'edit-sale-price',
+            // Phase 4D — Reports
+            'view-profit-loss',    // sensitive P&L data
+            'view-staff-reports',  // cashier performance
+            'view-admin-reports',  // super admin platform reports
         ];
 
         foreach ($permissions as $perm) {
@@ -71,6 +75,8 @@ class RolePermissionSeeder extends Seeder
                 'view-loyalty', 'manage-loyalty',
                 'manage-customer-credit', 'manage-customer-groups',
                 'send-customer-communication', 'import-customers',
+                // Phase 4D
+                'view-profit-loss', 'view-staff-reports',
             ],
             'cashier' => [
                 'view-products',

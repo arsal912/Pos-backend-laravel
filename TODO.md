@@ -1,6 +1,6 @@
-# Phase 4A + 4B — Known Rough Edges & Follow-up Tasks
+# Phase 4A + 4B + 4C + 4D — Known Rough Edges & Follow-up Tasks
 
-Last updated: 2026-06-01
+Last updated: 2026-06-05
 
 ---
 
@@ -143,3 +143,50 @@ Before going live, complete these:
 | Receipt templates stored in tenant DB | Store-specific; makes import/export complete |
 | Sale items denormalize product_name + sku | Receipt history survives product deletion |
 | StockService as single entry point | Prevents direct inventory_items manipulation; ensures audit trail |
+
+---
+
+## 🔴 Phase 4D — Known Rough Edges
+
+### D1. Report cache disabled in tenant context
+**Where:** `app/Reports/BaseReport::remember()`
+**Issue:** stancl's `CacheTenancyBootstrapper` applies tagged cache. The default file driver doesn't support tags, causing a `BadMethodCallException`. The `remember()` method uses the `array` driver as a fallback (in-process cache only — doesn't persist between requests).
+**Fix for production:** Change `CACHE_STORE=redis` in `.env` and uncomment `RedisTenancyBootstrapper` in `config/tenancy.php`. Redis supports tagged cache natively. Alternatively, configure a separate `database` cache driver for reports.
+
+### D2. Report category filter for `sales-by-product` and `sales-by-category` show empty options
+**Where:** Filter schema — `options: []` for category/brand dropdowns
+**Issue:** The `/schema` endpoint returns empty `options` arrays for dynamic selects (categories, brands, plans). These would need a separate API call to populate.
+**Fix:** Either: (a) add a `options_source` field to filter schema that the frontend resolves via a known endpoint, or (b) pre-populate options in `getFilterSchema()` by querying the tenant DB at schema-load time.
+
+### D3. Admin reports use store_aggregates which are not real-time
+**Where:** `app/Reports/Admin/PlatformRevenueReport.php`, `StoresHealthReport.php`
+**Issue:** `store_aggregates.today_revenue` and `month_revenue` are populated by the daily `store-aggregates:sync` command. If the queue is not running, these are stale.
+**Fix:** Ensure `php artisan queue:work` runs in production. For real-time admin reporting, the analytics controller (`/admin/stores/{id}/analytics`) queries tenant DBs on-demand.
+
+### D4. DemoDataSeeder creates non-idempotent sales
+**Where:** `database/seeders/DemoDataSeeder.php`
+**Issue:** Running `php artisan tenant:seed-demo {id}` twice creates ~500 more sales each time. It does NOT check for existing sales.
+**Fix (acceptable for demo):** This is intentional — more sales = more realistic test data. But if you need idempotency, add: `if (DB::table('sales')->count() > 100) { $this->command->warn('Sales already seeded.'); return; }`
+
+### D5. P&L operating expenses depend on expenses table having data
+**Where:** `app/Reports/Financial/ProfitLossReport.php`
+**Issue:** If no expenses have been entered, the P&L shows `GROSS PROFIT = NET PROFIT` (no operating expense section). This is mathematically correct but looks incomplete.
+**Fix:** DemoDataSeeder now seeds 15 expenses. Encourage merchants to log expenses at `/dashboard/expenses` or via `POST /store/expenses`.
+
+### D6. Scheduled reports send NOW logs to communication_logs as status='skipped'
+**Where:** `app/Http/Controllers/Api/Store/ScheduledReportController::sendNow()`
+**Issue:** Phase 4D logs reports but doesn't send real emails (Phase 5 will add providers).
+**Fix (Phase 5):** Replace the `CommunicationLog` creation with a `Mail::to($email)->send(new ScheduledReportMail($result, $schedule))` call once a mail driver with attachment support is configured.
+
+---
+
+## 📋 Production Checklist (Additions for Phase 4D)
+
+```
+[ ] Set CACHE_STORE=redis for report caching to work correctly in tenant context
+[ ] Enable reports module for stores in Admin → Modules
+[ ] Run php artisan tenant:seed-demo {id} on test stores before demos
+[ ] Set up scheduled reports via /dashboard/reports/{slug} → Schedule button
+[ ] Enable reports:dispatch-scheduled in cron (already scheduled every 15 min)
+[ ] For FBR compliance: integrate with FBR IRIS API separately (see tax report notes)
+```

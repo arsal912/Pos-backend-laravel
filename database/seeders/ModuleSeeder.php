@@ -47,8 +47,10 @@ class ModuleSeeder extends Seeder
             ['name' => 'Purchase Reports', 'slug' => 'purchase-reports', 'category' => 'reports', 'icon' => 'shopping-bag', 'description' => 'Purchase analysis reports'],
             ['name' => 'Stock Reports', 'slug' => 'stock-reports', 'category' => 'reports', 'icon' => 'package-search', 'description' => 'Inventory and stock reports'],
             ['name' => 'Tax Reports', 'slug' => 'tax-reports', 'category' => 'reports', 'icon' => 'percent', 'description' => 'Tax collection and filing reports'],
-            ['name' => 'Profit & Loss', 'slug' => 'profit-loss', 'category' => 'reports', 'icon' => 'trending-up', 'description' => 'P&L statement and financial overview'],
-            ['name' => 'Staff Performance', 'slug' => 'staff-reports', 'category' => 'reports', 'icon' => 'award', 'description' => 'Staff sales and performance reports'],
+            ['name' => 'Profit & Loss',        'slug' => 'profit-loss',       'category' => 'reports', 'icon' => 'trending-up',    'description' => 'P&L statement and financial overview'],
+            ['name' => 'Staff Performance',    'slug' => 'staff-reports',     'category' => 'reports', 'icon' => 'award',           'description' => 'Staff sales and performance reports'],
+            ['name' => 'Customer Reports',     'slug' => 'customer-reports',  'category' => 'reports', 'icon' => 'users',           'description' => 'Customer activity, LTV, loyalty and credit reports'],
+            ['name' => 'Financial Reports',    'slug' => 'financial-reports', 'category' => 'reports', 'icon' => 'dollar-sign',     'description' => 'Cash flow, daily summary, payment reconciliation'],
 
             // ============ SETTINGS ============
             ['name' => 'Store Settings', 'slug' => 'store-settings', 'category' => 'settings', 'icon' => 'settings', 'is_core' => true, 'description' => 'General store configuration'],

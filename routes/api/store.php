@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Api\Store\BillingController;
 use App\Http\Controllers\Api\Store\CustomerController;
+use App\Http\Controllers\Api\Store\ExpenseController;
+use App\Http\Controllers\Api\Store\ReportController;
+use App\Http\Controllers\Api\Store\ScheduledReportController;
 use App\Http\Controllers\Api\Store\Crm\CommunicationController;
 use App\Http\Controllers\Api\Store\Crm\CreditController;
 use App\Http\Controllers\Api\Store\Crm\CustomerGroupController;
@@ -340,6 +343,36 @@ Route::prefix('receipt-templates')->group(function () {
 Route::prefix('settings')->group(function () {
     Route::get('/',   [StoreSettingsController::class, 'index']);
     Route::put('/',   [StoreSettingsController::class, 'update']);
+});
+
+// ============================================================================
+// PHASE 4D — EXPENSES  (permission: manage-expenses)
+// ============================================================================
+Route::prefix('expenses')->group(function () {
+    Route::get('categories',  [ExpenseController::class, 'categories']);
+    Route::get('/',           [ExpenseController::class, 'index']);
+    Route::post('/',          [ExpenseController::class, 'store']);
+    Route::put('{id}',        [ExpenseController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',     [ExpenseController::class, 'destroy'])->whereNumber('id');
+});
+
+// ============================================================================
+// PHASE 4D — REPORTS  (module: reports, permission: view-reports)
+// ============================================================================
+Route::middleware('module:reports')->prefix('reports')->group(function () {
+    Route::get('/',                     [ReportController::class, 'index']);
+    Route::get('{slug}/schema',         [ReportController::class, 'schema']);
+    Route::post('{slug}/run',           [ReportController::class, 'run']);
+    Route::post('{slug}/export',        [ReportController::class, 'export']);
+
+    // Scheduled reports
+    Route::prefix('scheduled')->group(function () {
+        Route::get('/',               [ScheduledReportController::class, 'index']);
+        Route::post('/',              [ScheduledReportController::class, 'store']);
+        Route::put('{id}',            [ScheduledReportController::class, 'update'])->whereNumber('id');
+        Route::delete('{id}',         [ScheduledReportController::class, 'destroy'])->whereNumber('id');
+        Route::post('{id}/send-now',  [ScheduledReportController::class, 'sendNow'])->whereNumber('id');
+    });
 });
 
 // ============================================================================
