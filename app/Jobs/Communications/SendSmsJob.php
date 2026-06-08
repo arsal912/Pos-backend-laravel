@@ -36,8 +36,9 @@ class SendSmsJob implements ShouldQueue
 
         $run = function () use ($manager, $log) {
             try {
-                $sms    = $manager->sms();
-                $result = $sms->send($this->to, $this->body, $this->opts);
+                $sms  = $manager->sms();
+                $body = $this->ensureStopSuffix($log->type ?? $this->opts['type'] ?? 'manual', $this->body);
+                $result = $sms->send($this->to, $body, $this->opts);
 
                 if ($result->success) {
                     $log->update([
@@ -69,6 +70,13 @@ class SendSmsJob implements ShouldQueue
         } else {
             $run();
         }
+    }
+
+    private function ensureStopSuffix(string $type, string $body): string
+    {
+        if (! in_array($type, ['marketing', 'birthday', 'reminder'])) return $body;
+        if (str_contains(strtolower($body), 'stop')) return $body;
+        return $body.' Reply STOP to opt out.';
     }
 
     private function handleFailure(CommunicationLog $log, string $error): void

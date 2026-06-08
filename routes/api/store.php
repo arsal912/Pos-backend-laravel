@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\Store\Crm\CustomerNoteController;
 use App\Http\Controllers\Api\Store\Crm\CustomerSegmentController;
 use App\Http\Controllers\Api\Store\Crm\GroupPricingController;
 use App\Http\Controllers\Api\Store\Crm\LoyaltyController;
+use App\Http\Controllers\Api\Store\Crm\CampaignController;
 use App\Http\Controllers\Api\Store\Crm\MessageTemplateController;
 use App\Http\Controllers\Api\Store\Pos\PosController;
 use App\Http\Controllers\Api\Store\Pos\SaleController;
@@ -259,7 +260,7 @@ Route::middleware('module:customer-credit')->prefix('credit')->group(function ()
 // PHASE 4C — COMMUNICATIONS + SEGMENTS
 Route::middleware('module:customer-communications')->group(function () {
     Route::get('communications',     [CommunicationController::class, 'index']);
-    Route::get('message-templates',  [CommunicationController::class, 'templates']);
+    // NOTE: GET message-templates removed — superseded by Phase 5 MessageTemplateController CRUD group below
 });
 
 Route::middleware('module:customers')->prefix('customer-segments')->group(function () {
@@ -386,6 +387,18 @@ Route::middleware('module:customer-communications')->prefix('communication-setti
     Route::get('usage',               [CommunicationSettingsController::class, 'getUsage']);
     Route::get('opt-outs',            [CommunicationSettingsController::class, 'getOptOuts']);
     Route::delete('opt-outs/{id}',    [CommunicationSettingsController::class, 'deleteOptOut'])->whereNumber('id');
+});
+
+Route::middleware('module:customer-communications')->prefix('campaigns')->group(function () {
+    Route::get('/',                     [CampaignController::class, 'index']);
+    Route::post('/',                    [CampaignController::class, 'store']);
+    Route::post('estimate-audience',    [CampaignController::class, 'estimateAudience']);
+    Route::get('{id}',                  [CampaignController::class, 'show'])->whereNumber('id');
+    Route::put('{id}',                  [CampaignController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',               [CampaignController::class, 'destroy'])->whereNumber('id');
+    Route::post('{id}/launch',          [CampaignController::class, 'launch'])->whereNumber('id');
+    Route::post('{id}/cancel',          [CampaignController::class, 'cancel'])->whereNumber('id');
+    Route::get('{id}/stats',            [CampaignController::class, 'stats'])->whereNumber('id');
 });
 
 Route::middleware('module:customer-communications')->prefix('message-templates')->group(function () {

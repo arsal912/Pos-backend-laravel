@@ -72,63 +72,50 @@ class CommunicationDispatcher
 
     private function dispatch(string $channel, string $to, string $body, ?string $subject, array $opts): CommunicationLog
     {
-        $type      = $opts['type']       ?? 'manual';
-        $customerId= $opts['customer_id'] ?? null;
-        $sentBy    = $opts['sent_by']    ?? auth()->id();
-        $refType   = $opts['reference_type'] ?? null;
-        $refId     = $opts['reference_id']   ?? null;
+        $type       = $opts['type']           ?? 'manual';
+        $customerId = $opts['customer_id']    ?? null;
+        $sentBy     = $opts['sent_by']        ?? auth()->id();
+        $refType    = $opts['reference_type'] ?? null;
+        $refId      = $opts['reference_id']   ?? null;
+        $campaignId = $opts['campaign_id']    ?? null;
 
-        // 1. Opt-out check
-        if (CommunicationOptOut::isOptedOut($channel, $to)) {
-            return CommunicationLog::create([
-                'customer_id'    => $customerId,
-                'recipient'      => $to,
-                'channel'        => $channel,
-                'type'           => $type,
-                'subject'        => $subject,
-                'body'           => $body,
-                'status'         => 'skipped',
-                'provider'       => 'opted_out',
-                'sent_by'        => $sentBy,
-                'reference_type' => $refType,
-                'reference_id'   => $refId,
-            ]);
-        }
-
-        // 2. Quota check (only applies inside tenant context)
-        if ($this->inTenantContext()) {
-            $quota = CommunicationQuota::current();
-            if (! $quota->hasQuota($channel)) {
-                return CommunicationLog::create([
-                    'customer_id'    => $customerId,
-                    'recipient'      => $to,
-                    'channel'        => $channel,
-                    'type'           => $type,
-                    'subject'        => $subject,
-                    'body'           => $body,
-                    'status'         => 'skipped',
-                    'provider'       => 'quota_exceeded',
-                    'sent_by'        => $sentBy,
-                    'reference_type' => $refType,
-                    'reference_id'   => $refId,
-                ]);
-            }
-        }
-
-        // 3. Create log with status='queued'
-        $log = CommunicationLog::create([
+        $baseLog = [
             'customer_id'    => $customerId,
             'recipient'      => $to,
             'channel'        => $channel,
             'type'           => $type,
             'subject'        => $subject,
             'body'           => $body,
-            'status'         => 'queued',
-            'provider'       => null,  // filled by job
             'sent_by'        => $sentBy,
             'reference_type' => $refType,
             'reference_id'   => $refId,
-        ]);
+            'campaign_id'    => $campaignId,
+        ];
+
+        // 1. Opt-out check
+        if (CommunicationOptOut::isOptedOut($channel, $to)) {
+            return CommunicationLog::create(array_merge($baseLog, [
+                'status'   => 'skipped',
+                'provider' => 'opted_out',
+            ]));
+        }
+
+        // 2. Quota check (only applies inside tenant context)
+        if ($this->inTenantContext()) {
+            $quota = CommunicationQuota::current();
+            if (! $quota->hasQuota($channel)) {
+                return CommunicationLog::create(array_merge($baseLog, [
+                    'status'   => 'skipped',
+                    'provider' => 'quota_exceeded',
+                ]));
+            }
+        }
+
+        // 3. Create log with status='queued'
+        $log = CommunicationLog::create(array_merge($baseLog, [
+            'status'   => 'queued',
+            'provider' => null,
+        ]));
 
         // 4. Dispatch job
         $tenantId = $this->inTenantContext() ? app('current_store')?->id : null;

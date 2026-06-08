@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Public\LandingController;
 use App\Http\Controllers\Api\Payments\JazzCashCallbackController;
 use App\Http\Controllers\Api\Payments\EasypaisaCallbackController;
+use App\Http\Controllers\Api\UnsubscribeController;
 use App\Http\Controllers\Api\Webhook\CommunicationsWebhookController;
 use App\Http\Controllers\Api\Webhook\PayPalWebhookController;
 use App\Http\Controllers\Api\Webhook\StripeWebhookController;
@@ -32,6 +33,14 @@ Route::prefix('v1')->group(function () {
 
         // Status check - always accessible
         Route::get('landing/status', [LandingController::class, 'status']);
+    });
+
+    // ============================================
+    // UNSUBSCRIBE (public, no auth, HMAC-signed)
+    // ============================================
+    Route::prefix('unsubscribe')->group(function () {
+        Route::get('/',         [UnsubscribeController::class, 'show']);
+        Route::post('/confirm', [UnsubscribeController::class, 'confirm']);
     });
 
     // ============================================

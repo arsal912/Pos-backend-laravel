@@ -7,6 +7,7 @@ use App\Models\CommunicationQuota;
 use App\Models\CommunicationSetting;
 use App\Models\Store;
 use App\Services\Communications\CommunicationsManager;
+use App\Services\Communications\UnsubscribeUrl;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -40,8 +41,9 @@ class SendEmailJob implements ShouldQueue
             try {
                 $emailProvider = $manager->email();
 
-                // Apply tenant sender identity if available
                 $sendOpts = $this->opts;
+
+                // Apply tenant sender identity if available
                 if ($this->tenantId) {
                     $settings = CommunicationSetting::current();
                     if ($settings->email_from_address) {
@@ -50,14 +52,19 @@ class SendEmailJob implements ShouldQueue
                     }
                 }
 
-                // Build HTML from body (wrap if plain text, otherwise use as-is)
+                // Build HTML, injecting compliance footer for marketing messages
                 $htmlBody = $sendOpts['html_body'] ?? $this->wrapHtml($this->body);
+
+                $type = $log->type ?? $this->opts['type'] ?? 'manual';
+                if (in_array($type, ['marketing', 'birthday', 'reminder']) && $this->tenantId) {
+                    $htmlBody = $this->appendComplianceFooter($htmlBody);
+                }
 
                 $result = $emailProvider->send(
                     $this->to,
                     $this->subject,
                     $htmlBody,
-                    strip_tags($this->body),
+                    strip_tags($htmlBody),
                     $sendOpts,
                 );
 
@@ -93,12 +100,38 @@ class SendEmailJob implements ShouldQueue
 
     private function wrapHtml(string $body): string
     {
-        // If already looks like HTML, use as-is
         if (str_contains($body, '<')) return $body;
 
-        // Wrap plain text
         $escaped = nl2br(htmlspecialchars($body, ENT_QUOTES, 'UTF-8'));
-        return "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#333;\">{$escaped}</div>";
+        return "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;\">{$escaped}</div>";
+    }
+
+    private function appendComplianceFooter(string $htmlBody): string
+    {
+        // Don't double-append if the body already contains an unsubscribe link
+        if (str_contains($htmlBody, '/unsubscribe') || str_contains($htmlBody, 'unsubscribe_url')) {
+            return $htmlBody;
+        }
+
+        $unsubUrl   = $this->tenantId
+            ? UnsubscribeUrl::generate('email', $this->to, $this->tenantId)
+            : '#';
+
+        $settings    = CommunicationSetting::current();
+        $address     = $settings->store_physical_address
+            ? e($settings->store_physical_address)
+            : 'Our Store, Please contact us for our address.';
+
+        $footer = <<<HTML
+
+<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center;line-height:1.8;">
+  <p>You received this email because you are a customer of our store.</p>
+  <p><a href="{$unsubUrl}" style="color:#6366f1;text-decoration:underline;">Unsubscribe</a> from marketing emails.</p>
+  <p>{$address}</p>
+</div>
+HTML;
+
+        return $htmlBody.$footer;
     }
 
     private function handleFailure(CommunicationLog $log, string $error): void

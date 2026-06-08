@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\AdminReportController;
 use App\Http\Controllers\Api\Admin\ApiLogController;
+use App\Http\Controllers\Api\Admin\AdminCommunicationsController;
 use App\Http\Controllers\Api\Admin\CommunicationsProviderController;
 use App\Http\Controllers\Api\Admin\DashboardController;
 use App\Http\Controllers\Api\Admin\LandingPageController;
@@ -96,6 +97,13 @@ Route::prefix('communications-providers')->group(function () {
     Route::put('{id}',           [CommunicationsProviderController::class, 'update'])->whereNumber('id');
     Route::post('{id}/test',     [CommunicationsProviderController::class, 'test'])->whereNumber('id');
     Route::post('{id}/set-default',[CommunicationsProviderController::class,'setDefault'])->whereNumber('id');
+});
+
+// Platform-wide Communications Overview
+Route::prefix('communications')->group(function () {
+    Route::get('overview',          [AdminCommunicationsController::class, 'overview']);
+    Route::get('quotas',            [AdminCommunicationsController::class, 'quotas']);
+    Route::get('stores/{id}/logs',  [AdminCommunicationsController::class, 'storeLogs'])->whereNumber('id');
 });
 
 // API Logs
