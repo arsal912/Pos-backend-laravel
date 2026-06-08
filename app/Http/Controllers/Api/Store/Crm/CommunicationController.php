@@ -7,6 +7,7 @@ use App\Http\Traits\ApiResponse;
 use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\MessageTemplate;
+use App\Services\Communications\CommunicationDispatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -64,43 +65,36 @@ class CommunicationController extends Controller
         }
 
         // Resolve merge tags
-        $body = $this->resolveMergeTags($validated['body'], $customer);
+        $body    = $this->resolveMergeTags($validated['body'], $customer);
+        $subject = $validated['subject'] ?? null;
 
-        // For WhatsApp, generate wa.me link
-        $providerResponse = null;
-        $status           = 'skipped';
-        $provider         = 'logged_only';
+        // Route through CommunicationDispatcher (handles opt-out, quota, queuing)
+        $dispatcher = app(CommunicationDispatcher::class);
+        $opts = [
+            'type'           => 'manual',
+            'customer_id'    => $customerId,
+            'reference_type' => 'customer',
+            'reference_id'   => $customerId,
+            'sent_by'        => auth()->id(),
+        ];
 
-        if ($validated['channel'] === 'whatsapp' && $customer->phone) {
-            $waPhone = preg_replace('/\D/', '', $customer->phone);
-            $waLink  = "https://wa.me/{$waPhone}?text=" . urlencode($body);
-            $providerResponse = ['whatsapp_link' => $waLink];
-            $status   = 'sent';
-            $provider = 'whatsapp_link';
-        }
-
-        $log = CommunicationLog::create([
-            'customer_id'       => $customerId,
-            'recipient'         => $recipient,
-            'channel'           => $validated['channel'],
-            'type'              => 'manual',
-            'subject'           => $validated['subject'] ?? null,
-            'body'              => $body,
-            'status'            => $status,
-            'provider'          => $provider,
-            'provider_response' => $providerResponse,
-            'sent_at'           => $status === 'sent' ? now() : null,
-            'sent_by'           => auth()->id(),
-        ]);
+        $log = match ($validated['channel']) {
+            'sms'      => $dispatcher->sendSms($recipient, $body, $opts),
+            'email'    => $dispatcher->sendEmail($recipient, $subject ?? 'Message from store', $body,
+                              array_merge($opts, ['html_body' => $body])),
+            'whatsapp' => $dispatcher->sendWhatsApp($recipient, $body, $opts),
+        };
 
         $message = $validated['channel'] === 'whatsapp'
             ? 'WhatsApp link generated. Click to send via WhatsApp Web.'
             : 'Message logged. SMS/Email delivery will be enabled in Phase 5.';
 
-        return $this->successResponse([
-            'log'             => $log,
-            'whatsapp_link'   => $providerResponse['whatsapp_link'] ?? null,
-        ], $message, 201);
+        $message = "Message queued for delivery via {$validated['channel']}.";
+        if ($validated['channel'] === 'whatsapp' && $log->status === 'queued') {
+            $message = 'WhatsApp message queued via Twilio.';
+        }
+
+        return $this->successResponse(['log' => $log], $message, 201);
     }
 
     /** GET /communications — global log */

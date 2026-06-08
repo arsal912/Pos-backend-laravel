@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Public\LandingController;
 use App\Http\Controllers\Api\Payments\JazzCashCallbackController;
 use App\Http\Controllers\Api\Payments\EasypaisaCallbackController;
+use App\Http\Controllers\Api\Webhook\CommunicationsWebhookController;
 use App\Http\Controllers\Api\Webhook\PayPalWebhookController;
 use App\Http\Controllers\Api\Webhook\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -71,8 +72,12 @@ Route::prefix('v1')->group(function () {
 
     // Payment gateway webhooks (CSRF-exempt, signature-verified)
     Route::prefix('webhooks')->group(function () {
-        Route::post('stripe', [StripeWebhookController::class, 'handle']);
-        Route::post('paypal', [PayPalWebhookController::class, 'handle']);
+        Route::post('stripe',                        [StripeWebhookController::class,          'handle']);
+        Route::post('paypal',                        [PayPalWebhookController::class,           'handle']);
+        // Communications delivery webhooks (Twilio + Resend)
+        Route::post('communications/sms',            [CommunicationsWebhookController::class,   'sms']);
+        Route::post('communications/email',          [CommunicationsWebhookController::class,   'email']);
+        Route::post('communications/whatsapp',       [CommunicationsWebhookController::class,   'whatsapp']);
     });
 
     // Legacy alias kept for backward compat with already-registered Stripe dashboard URLs

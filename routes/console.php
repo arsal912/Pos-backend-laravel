@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
+use App\Models\CommunicationQuota;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Database\DatabaseManager as TenancyDatabaseManager;
 
@@ -523,6 +524,45 @@ Artisan::command('stripe:sync-plans', function () {
  * Scheduled daily at 9am. Finds subs expiring in 1, 3, or 7 days.
  * Usage: php artisan renewals:send-manual-reminders
  */
+// =============================================================================
+// PHASE 5 — COMMUNICATIONS QUOTA RESET
+// =============================================================================
+
+/*
+ * Reset daily communication quota counters for all tenant DBs.
+ * Runs hourly — checks each channel's quota_resets_at timestamp.
+ * Usage: php artisan communications:reset-daily-quotas
+ */
+Artisan::command('communications:reset-daily-quotas', function () {
+    $reset = 0;
+    Store::chunk(20, function ($stores) use (&$reset) {
+        foreach ($stores as $store) {
+            try {
+                $store->run(function () use (&$reset) {
+                    if (! \Illuminate\Support\Facades\Schema::hasTable('communication_quotas')) return;
+                    $quota = CommunicationQuota::current();
+                    $now   = now();
+                    $changed = false;
+
+                    foreach (['sms', 'email', 'whatsapp'] as $channel) {
+                        $resetsAt = $quota->{"{$channel}_quota_resets_at"};
+                        if ($resetsAt && $resetsAt->lt($now)) {
+                            $quota->{"{$channel}_sent_today"}       = 0;
+                            $quota->{"{$channel}_quota_resets_at"}  = $now->copy()->addDay()->startOfDay();
+                            $changed = true;
+                        }
+                    }
+
+                    if ($changed) { $quota->save(); $reset++; }
+                });
+            } catch (\Throwable) {}
+        }
+    });
+    $this->info("Quota counters reset for {$reset} tenant(s).");
+})->purpose('Reset daily communication quota counters for all tenants');
+
+Schedule::command('communications:reset-daily-quotas')->hourly();
+
 // =============================================================================
 // PHASE 4D — SCHEDULED REPORTS DISPATCH
 // =============================================================================

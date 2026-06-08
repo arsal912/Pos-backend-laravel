@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Store\BillingController;
+use App\Http\Controllers\Api\Store\CommunicationSettingsController;
 use App\Http\Controllers\Api\Store\CustomerController;
 use App\Http\Controllers\Api\Store\ExpenseController;
 use App\Http\Controllers\Api\Store\ReportController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Api\Store\Crm\CustomerNoteController;
 use App\Http\Controllers\Api\Store\Crm\CustomerSegmentController;
 use App\Http\Controllers\Api\Store\Crm\GroupPricingController;
 use App\Http\Controllers\Api\Store\Crm\LoyaltyController;
+use App\Http\Controllers\Api\Store\Crm\MessageTemplateController;
 use App\Http\Controllers\Api\Store\Pos\PosController;
 use App\Http\Controllers\Api\Store\Pos\SaleController;
 use App\Http\Controllers\Api\Store\ReceiptTemplateController;
@@ -373,6 +375,26 @@ Route::middleware('module:reports')->prefix('reports')->group(function () {
         Route::delete('{id}',         [ScheduledReportController::class, 'destroy'])->whereNumber('id');
         Route::post('{id}/send-now',  [ScheduledReportController::class, 'sendNow'])->whereNumber('id');
     });
+});
+
+// ============================================================================
+// PHASE 5 — COMMUNICATION SETTINGS (module: customer-communications)
+// ============================================================================
+Route::middleware('module:customer-communications')->prefix('communication-settings')->group(function () {
+    Route::get('settings',            [CommunicationSettingsController::class, 'getSettings']);
+    Route::put('settings',            [CommunicationSettingsController::class, 'updateSettings']);
+    Route::get('usage',               [CommunicationSettingsController::class, 'getUsage']);
+    Route::get('opt-outs',            [CommunicationSettingsController::class, 'getOptOuts']);
+    Route::delete('opt-outs/{id}',    [CommunicationSettingsController::class, 'deleteOptOut'])->whereNumber('id');
+});
+
+Route::middleware('module:customer-communications')->prefix('message-templates')->group(function () {
+    Route::get('/',                  [MessageTemplateController::class, 'index']);
+    Route::post('/',                 [MessageTemplateController::class, 'store']);
+    Route::get('{id}',               [MessageTemplateController::class, 'show'])->whereNumber('id');
+    Route::put('{id}',               [MessageTemplateController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',            [MessageTemplateController::class, 'destroy'])->whereNumber('id');
+    Route::post('{id}/duplicate',    [MessageTemplateController::class, 'duplicate'])->whereNumber('id');
 });
 
 // ============================================================================

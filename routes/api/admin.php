@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\AdminReportController;
 use App\Http\Controllers\Api\Admin\ApiLogController;
+use App\Http\Controllers\Api\Admin\CommunicationsProviderController;
 use App\Http\Controllers\Api\Admin\DashboardController;
 use App\Http\Controllers\Api\Admin\LandingPageController;
 use App\Http\Controllers\Api\Admin\BillingController;
@@ -87,6 +88,14 @@ Route::prefix('reports')->group(function () {
     Route::get('{slug}/schema',        [AdminReportController::class, 'schema']);
     Route::post('{slug}/run',          [AdminReportController::class, 'run']);
     Route::post('{slug}/export',       [AdminReportController::class, 'export']);
+});
+
+// Communications Providers
+Route::prefix('communications-providers')->group(function () {
+    Route::get('/',              [CommunicationsProviderController::class, 'index']);
+    Route::put('{id}',           [CommunicationsProviderController::class, 'update'])->whereNumber('id');
+    Route::post('{id}/test',     [CommunicationsProviderController::class, 'test'])->whereNumber('id');
+    Route::post('{id}/set-default',[CommunicationsProviderController::class,'setDefault'])->whereNumber('id');
 });
 
 // API Logs

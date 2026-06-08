@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             SuperAdminSeeder::class,
             LandingPageSeeder::class,
             PaymentGatewaySeeder::class,
+            CommunicationProviderSeeder::class,
         ]);
     }
 }
