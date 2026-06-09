@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AdminPosDevicesController;
 use App\Http\Controllers\Api\Admin\AdminReportController;
 use App\Http\Controllers\Api\Admin\ApiLogController;
 use App\Http\Controllers\Api\Admin\AdminCommunicationsController;
@@ -104,6 +105,12 @@ Route::prefix('communications')->group(function () {
     Route::get('overview',          [AdminCommunicationsController::class, 'overview']);
     Route::get('quotas',            [AdminCommunicationsController::class, 'quotas']);
     Route::get('stores/{id}/logs',  [AdminCommunicationsController::class, 'storeLogs'])->whereNumber('id');
+});
+
+// Platform-wide POS Device Management
+Route::prefix('pos-devices')->group(function () {
+    Route::get('/',         [AdminPosDevicesController::class, 'index']);
+    Route::post('{id}/deactivate', [AdminPosDevicesController::class, 'deactivate'])->whereNumber('id');
 });
 
 // API Logs

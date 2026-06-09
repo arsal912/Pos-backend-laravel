@@ -132,6 +132,16 @@ class SyncStoreAggregate implements ShouldQueue
             Log::warning("SyncStoreAggregate failed for store {$this->store->id}: {$e->getMessage()}");
         }
 
+        // Phase 6 — POS device metrics (central DB, no tenant context needed)
+        $meta['pos_devices_active']    = \App\Models\PosDevice::where('store_id', $this->store->id)
+            ->where('is_active', true)
+            ->count();
+        $meta['pos_devices_online']    = \App\Models\PosDevice::where('store_id', $this->store->id)
+            ->where('last_seen_at', '>=', now()->subMinutes(10))
+            ->count();
+        $meta['offline_sales_pending'] = \App\Models\PosDevice::where('store_id', $this->store->id)
+            ->sum('pending_sales_count');
+
         // Merge new meta with existing to preserve fields from other sync paths
         $existingMeta = StoreAggregate::where('store_id', $this->store->id)->value('meta') ?? [];
 

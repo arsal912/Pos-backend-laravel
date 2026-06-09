@@ -16,6 +16,9 @@ class Sale extends Model
         'subtotal', 'tax_amount', 'discount_amount', 'discount_type',
         'discount_reason', 'total', 'paid_amount', 'change_given', 'balance',
         'status', 'payment_status', 'notes',
+        // Phase 6 — offline sync fields
+        'offline_reference', 'synced_from_device_id', 'synced_at',
+        'has_stock_conflict', 'has_credit_conflict',
     ];
 
     protected function casts(): array

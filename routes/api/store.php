@@ -15,7 +15,10 @@ use App\Http\Controllers\Api\Store\Crm\GroupPricingController;
 use App\Http\Controllers\Api\Store\Crm\LoyaltyController;
 use App\Http\Controllers\Api\Store\Crm\CampaignController;
 use App\Http\Controllers\Api\Store\Crm\MessageTemplateController;
+use App\Http\Controllers\Api\Store\Pos\DeviceController;
 use App\Http\Controllers\Api\Store\Pos\PosController;
+use App\Http\Controllers\Api\Store\Pos\OfflineSalesSyncController;
+use App\Http\Controllers\Api\Store\Pos\PosSyncController;
 use App\Http\Controllers\Api\Store\Pos\SaleController;
 use App\Http\Controllers\Api\Store\ReceiptTemplateController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
@@ -295,6 +298,32 @@ Route::middleware('module:pos-sales')->group(function () {
         Route::get('hold',             [PosController::class, 'listHeld']);
         Route::post('hold/{id}/resume',[PosController::class, 'resumeHeld'])->whereNumber('id');
         Route::delete('hold/{id}',     [PosController::class, 'deleteHeld'])->whereNumber('id');
+
+        // ── Offline sync — SERVER → CLIENT data preload (Phase 6) ───────────────
+        Route::prefix('sync')->group(function () {
+            Route::get('manifest',  [PosSyncController::class, 'manifest']);
+            Route::get('products',  [PosSyncController::class, 'products']);
+            Route::get('customers', [PosSyncController::class, 'customers']);
+            Route::get('reference', [PosSyncController::class, 'reference']);
+            // CLIENT → SERVER: upload offline-created sales
+            Route::post('sales',    [OfflineSalesSyncController::class, 'syncSales']);
+        });
+
+        // ── Sync conflict management (Phase 6) ───────────────────────────────────
+        Route::prefix('sync-conflicts')->group(function () {
+            Route::get('/',                [OfflineSalesSyncController::class, 'conflicts']);
+            Route::post('{id}/resolve',    [OfflineSalesSyncController::class, 'resolveConflict'])->whereNumber('id');
+        });
+
+        // ── Device registry (Phase 6 — PWA offline) ──────────────────────────────
+        Route::post('devices/register',          [DeviceController::class, 'register']);
+        Route::post('devices/{id}/ping',         [DeviceController::class, 'ping'])->whereNumber('id');
+        Route::middleware('permission:manage-pos-devices')->group(function () {
+            Route::get('devices',                [DeviceController::class, 'index']);
+            Route::put('devices/{id}',           [DeviceController::class, 'update'])->whereNumber('id');
+            Route::delete('devices/{id}',        [DeviceController::class, 'destroy'])->whereNumber('id');
+            Route::get('devices/{id}/sync-status',[DeviceController::class, 'syncStatus'])->whereNumber('id');
+        });
 
         // Cash drawer
         Route::post('drawer/open',     [PosController::class, 'openDrawer']);

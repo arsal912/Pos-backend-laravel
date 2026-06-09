@@ -36,6 +36,14 @@ Route::prefix('v1')->group(function () {
     });
 
     // ============================================
+    // HEALTH (public — used by PWA offline probe)
+    // ============================================
+    Route::get('health', fn () => response()->json([
+        'status' => 'ok',
+        'ts'     => now()->toIso8601String(),
+    ]));
+
+    // ============================================
     // UNSUBSCRIBE (public, no auth, HMAC-signed)
     // ============================================
     Route::prefix('unsubscribe')->group(function () {

@@ -46,8 +46,10 @@ class RolePermissionSeeder extends Seeder
             'send-customer-communication',
             // Phase 4C — Import
             'import-customers',
-            // POS price override (mentioned in Step 7)
+            // POS price override
             'edit-sale-price',
+            // Phase 6 — PWA device management
+            'manage-pos-devices',
             // Phase 4D — Reports
             'view-profit-loss',    // sensitive P&L data
             'view-staff-reports',  // cashier performance
@@ -77,6 +79,8 @@ class RolePermissionSeeder extends Seeder
                 'send-customer-communication', 'import-customers',
                 // Phase 4D
                 'view-profit-loss', 'view-staff-reports',
+                // Phase 6
+                'manage-pos-devices',
             ],
             'cashier' => [
                 'view-products',
