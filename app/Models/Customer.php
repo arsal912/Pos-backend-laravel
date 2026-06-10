@@ -161,6 +161,44 @@ class Customer extends Model
         return ((float) $this->outstanding_balance + $amount) <= (float) $this->credit_limit;
     }
 
+    /**
+     * Recalculate and persist denormalized purchase stats from the sales table.
+     * Call this after any sale is completed, voided, or returned.
+     *
+     * Stats updated: total_purchases_count, lifetime_value, last_purchase_at
+     */
+    public static function updatePurchaseStats(int $customerId): void
+    {
+        $stats = Sale::where('customer_id', $customerId)
+            ->where('status', 'completed')
+            ->whereNull('deleted_at')
+            ->selectRaw('COUNT(*) as cnt, COALESCE(SUM(total), 0) as ltv, MAX(sale_date) as last_at')
+            ->first();
+
+        static::where('id', $customerId)->update([
+            'total_purchases_count' => (int)   ($stats?->cnt    ?? 0),
+            'lifetime_value'        => (float) ($stats?->ltv    ?? 0),
+            'last_purchase_at'      => $stats?->last_at          ?? null,
+        ]);
+    }
+
+    /**
+     * Bulk-recalculate stats for all customers in the current tenant.
+     * Used by the nightly scheduled command and FullDemoSeeder.
+     */
+    public static function recalculateAllStats(): int
+    {
+        $updated = 0;
+        static::where('is_active', true)
+            ->whereNull('deleted_at')
+            ->orderBy('id')
+            ->each(function (self $customer) use (&$updated) {
+                static::updatePurchaseStats($customer->id);
+                $updated++;
+            });
+        return $updated;
+    }
+
     /** Maximum redeemable Rs value from loyalty points for a given sale total. */
     public function maxRedeemableValue(float $saleTotal, LoyaltySettings $settings): float
     {

@@ -266,6 +266,13 @@ class OfflineSalesSyncController extends Controller
                 $this->loyalty->earnFromSale($result->id);
             } catch (\Throwable) {}
 
+            // Post-transaction: customer purchase stats (non-fatal)
+            if ($result->customer_id) {
+                try {
+                    Customer::updatePurchaseStats($result->customer_id);
+                } catch (\Throwable) {}
+            }
+
             return [
                 'offline_reference' => $offlineRef,
                 'status'            => ($hasStockConflict || $hasCreditConflict) ? 'synced_with_conflicts' : 'synced',

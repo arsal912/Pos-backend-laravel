@@ -378,6 +378,11 @@ class PosController extends Controller
                 try {
                     $loyaltyEarned = $this->loyalty->earnFromSale($sale->id);
                 } catch (\Throwable) { /* non-fatal */ }
+
+                // 4. Update denormalized customer purchase stats
+                try {
+                    \App\Models\Customer::updatePurchaseStats($sale->customer_id);
+                } catch (\Throwable) { /* non-fatal */ }
             }
         } catch (CreditLimitExceededException $e) {
             return $this->errorResponse($e->getMessage(), 422);

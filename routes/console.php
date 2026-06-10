@@ -718,40 +718,20 @@ Schedule::command('loyalty:birthday-bonuses')->dailyAt('08:00');
  * Scheduled daily at 4am.
  */
 Artisan::command('customers:update-lifetime-stats', function () {
-    $updated = 0;
-    Store::chunk(20, function ($stores) use (&$updated) {
+    $total = 0;
+    Store::chunk(20, function ($stores) use (&$total) {
         foreach ($stores as $store) {
             try {
-                $store->run(function () use (&$updated) {
+                $store->run(function () use (&$total) {
                     if (! Schema::hasTable('sales') || ! Schema::hasTable('customers')) return;
-
-                    DB::table('customers')
-                        ->where('is_active', true)
-                        ->whereNull('deleted_at')
-                        ->orderBy('id')
-                        ->each(function ($customer) use (&$updated) {
-                            $stats = DB::table('sales')
-                                ->where('customer_id', $customer->id)
-                                ->where('status', 'completed')
-                                ->selectRaw('COUNT(*) as count, SUM(total) as total, MAX(sale_date) as last')
-                                ->first();
-
-                            if (! $stats) return;
-
-                            DB::table('customers')->where('id', $customer->id)->update([
-                                'lifetime_value'       => (float) ($stats->total ?? 0),
-                                'total_purchases_count'=> (int)   ($stats->count ?? 0),
-                                'last_purchase_at'     => $stats->last,
-                            ]);
-                            $updated++;
-                        });
+                    $total += \App\Models\Customer::recalculateAllStats();
                 });
             } catch (\Throwable $e) {
                 $this->error("Store {$store->id}: {$e->getMessage()}");
             }
         }
     });
-    $this->info("Customer lifetime stats updated: {$updated} customers");
+    $this->info("Customer stats recalculated: {$total} customers updated");
 })->purpose('Denormalize customer lifetime_value, total_purchases_count, last_purchase_at from sales');
 
 Schedule::command('customers:update-lifetime-stats')->dailyAt('04:00');

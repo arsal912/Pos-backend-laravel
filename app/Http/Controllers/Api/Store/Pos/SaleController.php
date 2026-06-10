@@ -150,6 +150,13 @@ class SaleController extends Controller
                 'status' => $allItemsFullyReturned ? 'refunded' : 'partially_refunded',
             ]);
 
+            // Update customer stats — refund reduces lifetime value
+            if ($sale->customer_id) {
+                try {
+                    \App\Models\Customer::updatePurchaseStats($sale->customer_id);
+                } catch (\Throwable) {}
+            }
+
             return $this->successResponse(
                 ['return' => $saleReturn->load('items')],
                 'Return processed.',

@@ -353,6 +353,10 @@ class FullDemoSeeder extends Seeder
         $this->seedSales($products, $customers, $cashier, $branch->id);
         $this->command->info('  ✓ 20 sales');
 
+        // ── Recalculate customer stats from actual sales ───────────────────────
+        Customer::recalculateAllStats();
+        $this->command->info('  ✓ Customer stats recalculated');
+
         // ── Expenses ──────────────────────────────────────────────────────────
         $expenseData = [
             ['category' => 'Rent',       'description' => 'Shop rent — June 2026',          'amount' => 45000,  'method' => 'bank_transfer'],
