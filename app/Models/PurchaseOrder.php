@@ -16,7 +16,7 @@ class PurchaseOrder extends Model
         'po_number', 'supplier_id', 'branch_id', 'order_date',
         'expected_delivery_date', 'status',
         'subtotal', 'tax_amount', 'discount_amount', 'total',
-        'notes', 'terms', 'created_by', 'approved_by',
+        'notes', 'terms', 'created_by', 'updated_by', 'approved_by',
     ];
 
     protected function casts(): array

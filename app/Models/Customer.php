@@ -18,7 +18,7 @@ class Customer extends Model
         'code', 'name', 'email', 'phone', 'company', 'tax_number',
         'billing_address', 'shipping_address', 'city', 'country',
         'date_of_birth', 'gender', 'opening_balance', 'credit_limit',
-        'notes', 'is_active', 'created_by',
+        'notes', 'is_active', 'created_by', 'updated_by',
         // Phase 4C
         'customer_group_id', 'loyalty_points_balance', 'lifetime_value',
         'outstanding_balance', 'last_purchase_at', 'total_purchases_count',

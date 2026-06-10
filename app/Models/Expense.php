@@ -13,7 +13,7 @@ class Expense extends Model
     protected $fillable = [
         'expense_date', 'category', 'description',
         'amount', 'payment_method', 'branch_id',
-        'reference', 'notes', 'created_by',
+        'reference', 'notes', 'created_by', 'updated_by',
     ];
 
     protected function casts(): array
