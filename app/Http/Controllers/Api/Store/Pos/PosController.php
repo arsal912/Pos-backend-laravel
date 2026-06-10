@@ -529,7 +529,7 @@ class PosController extends Controller
         // Calculate expected balance
         $cashSales = Sale::where('cashier_id', auth()->id())
             ->where('status', 'completed')
-            ->where('created_at', '>=', $session->opened_at)
+            ->where('sales.created_at', '>=', $session->opened_at)
             ->join('sale_payments', 'sales.id', '=', 'sale_payments.sale_id')
             ->where('sale_payments.method', 'cash')
             ->sum('sale_payments.amount');
@@ -556,7 +556,7 @@ class PosController extends Controller
 
         $cashSales = Sale::where('cashier_id', auth()->id())
             ->where('status', 'completed')
-            ->where('created_at', '>=', $session->opened_at)
+            ->where('sales.created_at', '>=', $session->opened_at)
             ->join('sale_payments', 'sales.id', '=', 'sale_payments.sale_id')
             ->where('sale_payments.method', 'cash')
             ->sum('sale_payments.amount');
