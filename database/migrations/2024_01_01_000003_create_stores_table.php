@@ -12,6 +12,8 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('slug')->unique();
+            // stancl/tenancy v3 — stores the assigned tenant database name
+            $table->string('tenancy_db_name')->nullable();
             $table->string('business_type')->nullable();
             $table->string('email')->unique();
             $table->string('phone')->nullable();

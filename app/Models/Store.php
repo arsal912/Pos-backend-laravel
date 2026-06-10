@@ -24,6 +24,7 @@ class Store extends Model implements TenantWithDatabase
     protected $fillable = [
         'name',
         'slug',
+        'tenancy_db_name', // set by stancl/tenancy when the tenant DB is created
         'business_type',
         'email',
         'phone',
