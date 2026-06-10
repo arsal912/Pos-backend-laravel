@@ -377,6 +377,12 @@ Route::prefix('settings')->group(function () {
     Route::put('/',   [StoreSettingsController::class, 'update']);
 });
 
+// Branches — simple list used by inventory, POS, etc.
+Route::get('branches', function () {
+    $branches = \App\Models\Branch::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code', 'is_main']);
+    return response()->json(['success' => true, 'data' => $branches]);
+});
+
 // ============================================================================
 // PHASE 4D — EXPENSES  (permission: manage-expenses)
 // ============================================================================
