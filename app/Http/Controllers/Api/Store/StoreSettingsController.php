@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
-use App\Models\Store;
 use App\Models\StoreSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,6 +57,35 @@ class StoreSettingsController extends Controller
         }
 
         return $this->successResponse(['settings' => StoreSetting::allAsArray()], 'Settings saved.');
+    }
+
+    /**
+     * PUT /store/settings/whatsapp — store owner sets their WhatsApp Business number.
+     * This is the number customers will message to request reports.
+     */
+    public function updateWhatsapp(Request $request): JsonResponse
+    {
+        if (! $request->user()->can('manage-settings')) {
+            return $this->errorResponse('Unauthorized.', 403);
+        }
+
+        $validated = $request->validate([
+            'whatsapp_number' => 'nullable|string|max:20|regex:/^\+?[0-9\s\-]+$/',
+        ]);
+
+        $store = $request->user()->store;
+        if (! $store) {
+            return $this->errorResponse('Store not found.', 404);
+        }
+
+        $store->whatsapp_number = $validated['whatsapp_number']
+            ? preg_replace('/\s+/', '', $validated['whatsapp_number'])
+            : null;
+        $store->save();
+
+        return $this->successResponse([
+            'whatsapp_number' => $store->whatsapp_number,
+        ], 'WhatsApp number updated.');
     }
 
     /**

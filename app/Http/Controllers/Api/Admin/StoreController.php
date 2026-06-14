@@ -82,6 +82,25 @@ class StoreController extends Controller
      * POST /admin/stores/{id}/logo — upload or replace a store's logo icon.
      * Super admin can update any store's logo.
      */
+    /**
+     * PUT /admin/stores/{id}/whatsapp — set the WhatsApp number for a store.
+     */
+    public function updateWhatsapp(Request $request, int $id): JsonResponse
+    {
+        $store = Store::findOrFail($id);
+
+        $validated = $request->validate([
+            'whatsapp_number' => 'nullable|string|max:20|regex:/^\+?[0-9\s\-]+$/',
+        ]);
+
+        $store->whatsapp_number = $validated['whatsapp_number'] ? preg_replace('/\s+/', '', $validated['whatsapp_number']) : null;
+        $store->save();
+
+        return $this->successResponse([
+            'whatsapp_number' => $store->whatsapp_number,
+        ], 'WhatsApp number updated.');
+    }
+
     public function uploadLogo(Request $request, int $id): JsonResponse
     {
         $store = Store::findOrFail($id);

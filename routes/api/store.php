@@ -377,7 +377,8 @@ Route::prefix('receipt-templates')->group(function () {
 Route::prefix('settings')->group(function () {
     Route::get('/',    [StoreSettingsController::class, 'index']);
     Route::put('/',    [StoreSettingsController::class, 'update']);
-    Route::post('logo',[StoreSettingsController::class, 'uploadLogo']);
+    Route::post('logo',      [StoreSettingsController::class, 'uploadLogo']);
+    Route::put('whatsapp',   [StoreSettingsController::class, 'updateWhatsapp']);
 });
 
 // Branches — simple list used by inventory, POS, etc.

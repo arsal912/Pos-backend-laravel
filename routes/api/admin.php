@@ -32,7 +32,8 @@ Route::prefix('stores')->group(function () {
     Route::put('{id}/status', [StoreController::class, 'updateStatus']);
     Route::delete('{id}', [StoreController::class, 'destroy']);
     Route::post('{id}/impersonate', [StoreController::class, 'impersonate']);
-    Route::post('{id}/logo', [StoreController::class, 'uploadLogo'])->whereNumber('id');
+    Route::post('{id}/logo',    [StoreController::class, 'uploadLogo'])->whereNumber('id');
+    Route::put('{id}/whatsapp', [StoreController::class, 'updateWhatsapp'])->whereNumber('id');
 });
 
 // Landing Page CMS

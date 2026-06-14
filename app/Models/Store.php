@@ -41,6 +41,7 @@ class Store extends Model implements TenantWithDatabase
         'city',
         'country',
         'logo',
+        'whatsapp_number',
         'currency',
         'timezone',
         'trial_ends_at',

@@ -36,6 +36,35 @@ Route::prefix('v1')->group(function () {
     });
 
     // ============================================
+    // WHATSAPP REPORT DOWNLOAD (public, token-protected)
+    // ============================================
+    Route::get('report-download/{token}', function (string $token) {
+        $found = null;
+        \App\Models\Store::chunk(20, function ($stores) use ($token, &$found) {
+            if ($found) return false;
+            foreach ($stores as $store) {
+                try {
+                    $store->run(function () use ($token, &$found) {
+                        $req = \App\Models\WhatsAppReportRequest::where('download_token', $token)->first();
+                        if ($req && !$req->isExpired() && $req->pdf_path) {
+                            $found = $req->pdf_path;
+                        }
+                    });
+                } catch (\Throwable) {}
+                if ($found) break;
+            }
+        });
+
+        if (!$found || !\Illuminate\Support\Facades\Storage::disk('local')->exists($found)) {
+            return response()->json(['error' => 'Report not found or link has expired.'], 404);
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->response(
+            $found, 'report.pdf', ['Content-Type' => 'application/pdf']
+        );
+    })->middleware('throttle:30,1');
+
+    // ============================================
     // HEALTH (public — used by PWA offline probe)
     // ============================================
     Route::get('health', function () {

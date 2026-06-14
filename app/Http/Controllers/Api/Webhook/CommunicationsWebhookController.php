@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api\Webhook;
 
+use App\Jobs\ProcessWhatsAppReportRequest;
 use App\Models\CommunicationLog;
 use App\Models\CommunicationOptOut;
 use App\Models\Store;
+use App\Models\WhatsAppReportRequest;
 use App\Services\Communications\CommunicationsManager;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -144,12 +146,48 @@ class CommunicationsWebhookController
             }
         }
 
-        // Inbound STOP
+        // Inbound message handling
         if (($event['type'] ?? '') === 'inbound') {
             $from = $event['from'] ?? null;
-            $body = strtoupper(trim($event['body'] ?? ''));
-            if ($from && $body === 'STOP') {
+            $to   = $event['to']   ?? null;
+            $body = trim($event['body'] ?? '');
+
+            if ($from && strtoupper($body) === 'STOP') {
                 $this->recordOptOut('whatsapp', $from, 'STOP reply');
+            } elseif ($from && $to && strlen($body) > 0) {
+                // Route to WhatsApp Report Bot
+                // Find which store owns the 'to' number
+                $toNumber = ltrim($to, 'whatsapp:');
+                $store = Store::where('whatsapp_number', $toNumber)
+                    ->orWhere('whatsapp_number', $to)
+                    ->first();
+
+                if ($store) {
+                    // Create a report request record in the tenant DB and dispatch the job
+                    $requestId = null;
+                    try {
+                        $store->run(function () use ($from, $body, &$requestId) {
+                            $req = WhatsAppReportRequest::create([
+                                'from_number' => $from,
+                                'message'     => $body,
+                                'status'      => 'pending',
+                            ]);
+                            $requestId = $req->id;
+                        });
+
+                        if ($requestId) {
+                            ProcessWhatsAppReportRequest::dispatch(
+                                $store->id,
+                                $requestId,
+                                $from,
+                                $to,
+                                $body
+                            );
+                        }
+                    } catch (\Throwable $ex) {
+                        Log::error('WhatsApp report bot dispatch failed', ['error' => $ex->getMessage()]);
+                    }
+                }
             }
         }
 
