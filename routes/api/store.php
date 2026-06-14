@@ -375,8 +375,9 @@ Route::prefix('receipt-templates')->group(function () {
 
 // POS / store settings (key-value store in tenant DB)
 Route::prefix('settings')->group(function () {
-    Route::get('/',   [StoreSettingsController::class, 'index']);
-    Route::put('/',   [StoreSettingsController::class, 'update']);
+    Route::get('/',    [StoreSettingsController::class, 'index']);
+    Route::put('/',    [StoreSettingsController::class, 'update']);
+    Route::post('logo',[StoreSettingsController::class, 'uploadLogo']);
 });
 
 // Branches — simple list used by inventory, POS, etc.

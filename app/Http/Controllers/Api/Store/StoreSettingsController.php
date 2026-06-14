@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
+use App\Models\Store;
 use App\Models\StoreSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class StoreSettingsController extends Controller
 {
@@ -55,5 +58,42 @@ class StoreSettingsController extends Controller
         }
 
         return $this->successResponse(['settings' => StoreSetting::allAsArray()], 'Settings saved.');
+    }
+
+    /**
+     * POST /store/settings/logo — store owner uploads/replaces their store logo.
+     */
+    public function uploadLogo(Request $request): JsonResponse
+    {
+        if (! $request->user()->can('manage-settings')) {
+            return $this->errorResponse('Unauthorized.', 403);
+        }
+
+        $request->validate([
+            'logo' => 'required|file|mimes:jpg,jpeg,png,webp,gif|max:2048',
+        ]);
+
+        $store = $request->user()->store;
+        if (! $store) {
+            return $this->errorResponse('Store not found.', 404);
+        }
+
+        // Delete previous logo
+        if ($store->logo && Storage::disk('local')->exists($store->logo)) {
+            Storage::disk('local')->delete($store->logo);
+        }
+
+        $ext  = $request->file('logo')->getClientOriginalExtension();
+        $path = "logos/{$store->id}/" . Str::uuid() . '.' . $ext;
+        Storage::disk('local')->put($path, file_get_contents($request->file('logo')->getRealPath()));
+
+        // logo excluded from $fillable — assign directly
+        $store->logo = $path;
+        $store->save();
+
+        return $this->successResponse([
+            'logo'     => $path,
+            'logo_url' => url("/api/v1/store/files/{$path}"),
+        ], 'Store logo updated.');
     }
 }

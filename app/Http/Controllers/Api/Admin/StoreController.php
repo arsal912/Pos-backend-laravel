@@ -10,6 +10,8 @@ use App\Models\StoreAggregate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class StoreController extends Controller
 {
@@ -74,6 +76,37 @@ class StoreController extends Controller
         $store->delete();
 
         return $this->successResponse(null, 'Store deleted');
+    }
+
+    /**
+     * POST /admin/stores/{id}/logo — upload or replace a store's logo icon.
+     * Super admin can update any store's logo.
+     */
+    public function uploadLogo(Request $request, int $id): JsonResponse
+    {
+        $store = Store::findOrFail($id);
+
+        $request->validate([
+            'logo' => 'required|file|mimes:jpg,jpeg,png,webp,gif|max:2048', // 2 MB max, no SVG
+        ]);
+
+        // Delete previous logo if it exists
+        if ($store->logo && Storage::disk('local')->exists($store->logo)) {
+            Storage::disk('local')->delete($store->logo);
+        }
+
+        $ext  = $request->file('logo')->getClientOriginalExtension();
+        $path = "logos/{$store->id}/" . Str::uuid() . '.' . $ext;
+        Storage::disk('local')->put($path, file_get_contents($request->file('logo')->getRealPath()));
+
+        // logo is excluded from $fillable — assign directly
+        $store->logo = $path;
+        $store->save();
+
+        return $this->successResponse([
+            'logo'     => $path,
+            'logo_url' => url("/api/v1/store/files/{$path}"),
+        ], 'Store logo updated.');
     }
 
     /**
