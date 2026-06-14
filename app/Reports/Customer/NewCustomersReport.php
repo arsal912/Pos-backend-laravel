@@ -39,7 +39,10 @@ class NewCustomersReport extends BaseReport
                     c.created_at as registered_at,
                     c.lifetime_value,
                     c.total_purchases_count,
-                    c.first_purchase_at
+                    (SELECT MIN(s.sale_date) FROM sales s
+                     WHERE s.customer_id = c.id
+                       AND s.status = 'completed'
+                       AND s.deleted_at IS NULL) as first_purchase_at
                 ")
                 ->orderByDesc('c.created_at')
                 ->get()
