@@ -19,6 +19,9 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\ApiLogger::class,
         ]);
 
+        // Security headers on all responses
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+
         // Named middleware aliases
         $middleware->alias([
             'super.admin' => \App\Http\Middleware\SuperAdmin::class,

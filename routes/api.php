@@ -38,10 +38,47 @@ Route::prefix('v1')->group(function () {
     // ============================================
     // HEALTH (public — used by PWA offline probe)
     // ============================================
-    Route::get('health', fn () => response()->json([
-        'status' => 'ok',
-        'ts'     => now()->toIso8601String(),
-    ]));
+    Route::get('health', function () {
+        return response()->json(['status' => 'ok', 'ts' => now()->toIso8601String()]);
+    });
+
+    Route::get('health/detail', function (\Illuminate\Http\Request $request) {
+        $token = $request->header('X-Health-Token');
+        if ($token !== config('app.health_check_token') || !$token) {
+            return response()->json(['status' => 'ok']); // don't leak details without token
+        }
+
+        $checks = [];
+
+        // DB check
+        try {
+            \DB::connection()->getPdo();
+            $checks['database'] = 'ok';
+        } catch (\Exception $e) {
+            $checks['database'] = 'error: ' . $e->getMessage();
+        }
+
+        // Queue depth (jobs table)
+        try {
+            $pending = \DB::table('jobs')->count();
+            $failed  = \DB::table('failed_jobs')->count();
+            $checks['queue_pending'] = $pending;
+            $checks['queue_failed']  = $failed;
+            $checks['queue'] = $failed > 10 ? 'degraded' : 'ok';
+        } catch (\Exception $e) {
+            $checks['queue'] = 'error';
+        }
+
+        $allOk = !collect($checks)->contains(fn($v) => str_contains((string)$v, 'error') || $v === 'degraded');
+        $status = $allOk ? 200 : 503;
+
+        return response()->json([
+            'status'    => $allOk ? 'ok' : 'degraded',
+            'checks'    => $checks,
+            'timestamp' => now()->toIso8601String(),
+            'version'   => config('app.version', '1.0.0'),
+        ], $status);
+    })->middleware('throttle:60,1');
 
     // ============================================
     // UNSUBSCRIBE (public, no auth, HMAC-signed)

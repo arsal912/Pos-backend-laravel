@@ -15,13 +15,16 @@ class PosDevice extends Model
 
     protected $connection = 'mysql'; // always central DB
 
+    /**
+     * store_id and registered_by are server-controlled (set from authenticated
+     * context, not user input) — excluded from $fillable to prevent mass assignment.
+     * They must be set via direct property assignment.
+     */
     protected $fillable = [
-        'store_id',
         'device_uuid',
         'device_name',
         'user_agent',
         'fingerprint',
-        'registered_by',
         'last_seen_at',
         'last_sync_at',
         'pending_sales_count',

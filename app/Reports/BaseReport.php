@@ -158,23 +158,7 @@ abstract class BaseReport implements ReportInterface
         $tenantId = app()->bound('current_store') ? (app('current_store')?->id ?? 'global') : 'global';
         $key      = "report:{$tenantId}:{$slug}:" . md5(json_encode($filters));
 
-        try {
-            // Use the database or array driver to avoid tagged-cache requirement
-            // when running inside stancl tenancy context (file driver doesn't support tags)
-            $store = Cache::driver('array');
-
-            $cached = $store->get($key);
-            if ($cached instanceof ReportResult) {
-                return $cached;
-            }
-
-            $result = $callback();
-            $store->put($key, $result, now()->addMinutes(5));
-            return $result;
-        } catch (\Throwable) {
-            // Cache unavailable — run without caching
-            return $callback();
-        }
+        return Cache::remember($key, now()->addMinutes(5), $callback);
     }
 
     // ── Meta helper ───────────────────────────────────────────────────────────

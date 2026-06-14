@@ -59,10 +59,11 @@ class StoreController extends Controller
         ]);
 
         $store = Store::findOrFail($id);
-        $store->update([
-            'status' => $validated['status'],
-            'is_active' => $validated['status'] === 'active',
-        ]);
+        // status and is_active are excluded from $fillable — assign directly
+        // to prevent mass-assignment exposure on the Store model.
+        $store->status    = $validated['status'];
+        $store->is_active = $validated['status'] === 'active';
+        $store->save();
 
         return $this->successResponse($store, 'Store status updated');
     }

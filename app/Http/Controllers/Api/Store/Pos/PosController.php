@@ -307,7 +307,7 @@ class PosController extends Controller
             return $this->errorResponse('Unauthorized.', 403);
         }
 
-        $sale = Sale::with(['items.product', 'payments'])->findOrFail($saleId);
+        $sale = Sale::with(['items.product', 'items.variant', 'payments', 'customer'])->findOrFail($saleId);
 
         if (! $sale->isDraft()) {
             return $this->errorResponse('Only draft sales can be completed.', 422);
@@ -390,7 +390,7 @@ class PosController extends Controller
             return $this->errorResponse($e->getMessage(), 422);
         }
 
-        $freshSale = $sale->fresh(['items.product', 'payments', 'customer']);
+        $freshSale = $sale->fresh(['items.product', 'items.variant', 'payments', 'customer']);
 
         return $this->successResponse([
             'sale'           => $freshSale,

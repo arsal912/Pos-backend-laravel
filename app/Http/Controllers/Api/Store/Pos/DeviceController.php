@@ -45,16 +45,19 @@ class DeviceController extends Controller
                 'last_seen_at'=> now(),
             ]);
         } else {
-            $device = PosDevice::create([
-                'store_id'      => $storeId,
+            // store_id and registered_by are server-controlled — set via direct
+            // assignment since they are excluded from $fillable.
+            $device = new PosDevice([
                 'device_uuid'   => $validated['device_uuid'],
                 'device_name'   => $validated['device_name'] ?? 'POS Terminal',
                 'user_agent'    => $validated['user_agent']  ?? $request->userAgent(),
                 'fingerprint'   => $validated['fingerprint'],
-                'registered_by' => auth()->id(),
                 'last_seen_at'  => now(),
                 'is_active'     => true,
             ]);
+            $device->store_id      = $storeId;
+            $device->registered_by = auth()->id();
+            $device->save();
         }
 
         return $this->successResponse([

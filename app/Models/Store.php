@@ -21,10 +21,19 @@ class Store extends Model implements TenantWithDatabase
     use CentralConnection;
     use TenantRun;
 
+    /**
+     * User-supplied registration fields only.
+     * Excluded from $fillable (set via direct property assignment):
+     *   - status:           server-controlled lifecycle field; allowing mass assignment
+     *                       would let a crafted request self-activate billing state.
+     *   - is_active:        derived from status by server-side logic only.
+     *   - tenancy_db_name:  managed exclusively by stancl/tenancy internals; overwriting
+     *                       via mass assignment could redirect the tenant context to the
+     *                       wrong database.
+     */
     protected $fillable = [
         'name',
         'slug',
-        'tenancy_db_name', // set by stancl/tenancy when the tenant DB is created
         'business_type',
         'email',
         'phone',
@@ -34,9 +43,8 @@ class Store extends Model implements TenantWithDatabase
         'logo',
         'currency',
         'timezone',
-        'status', // pending, active, suspended, expired
-        'is_active',
         'trial_ends_at',
+        'deletion_scheduled_at',
     ];
 
     protected function casts(): array
@@ -44,6 +52,7 @@ class Store extends Model implements TenantWithDatabase
         return [
             'is_active' => 'boolean',
             'trial_ends_at' => 'datetime',
+            'deletion_scheduled_at' => 'datetime',
         ];
     }
 
@@ -104,19 +113,22 @@ class Store extends Model implements TenantWithDatabase
 
     /**
      * Check if a specific module is enabled for this store.
+     * Result is cached for 5 minutes to avoid N+1 on every middleware check.
      */
     public function hasModuleAccess(string $moduleSlug): bool
     {
-        $storeModule = $this->storeModules()
-            ->whereHas('module', fn ($q) => $q->where('slug', $moduleSlug))
-            ->first();
+        $cacheKey = "module_access:store:{$this->id}:{$moduleSlug}";
+        return (bool) cache()->remember($cacheKey, 300, function () use ($moduleSlug) {
+            $storeModule = $this->storeModules()
+                ->whereHas('module', fn ($q) => $q->where('slug', $moduleSlug))
+                ->first();
 
-        if ($storeModule) {
-            return (bool) $storeModule->is_enabled;
-        }
+            if ($storeModule) {
+                return (bool) $storeModule->is_enabled;
+            }
 
-        // If no explicit setting, check the plan's default modules
-        return $this->activeSubscription?->plan?->hasModule($moduleSlug) ?? false;
+            return $this->activeSubscription?->plan?->hasModule($moduleSlug) ?? false;
+        });
     }
 
     /**

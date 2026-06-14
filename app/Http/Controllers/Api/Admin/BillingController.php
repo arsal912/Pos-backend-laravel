@@ -129,7 +129,10 @@ class BillingController extends Controller
             $subscription->status = 'active';
             // Also reactivate the store if it was suspended due to expiry
             if ($subscription->store?->status === 'expired') {
-                $subscription->store->update(['status' => 'active']);
+                // status is excluded from Store::$fillable — assign directly.
+                $subscription->store->status    = 'active';
+                $subscription->store->is_active = true;
+                $subscription->store->save();
             }
         }
 
@@ -186,7 +189,10 @@ class BillingController extends Controller
         $subscription->save();
 
         if ($subscription->store?->status === 'expired') {
-            $subscription->store->update(['status' => 'active']);
+            // status is excluded from Store::$fillable — assign directly.
+            $subscription->store->status    = 'active';
+            $subscription->store->is_active = true;
+            $subscription->store->save();
         }
 
         PaymentEvent::create([

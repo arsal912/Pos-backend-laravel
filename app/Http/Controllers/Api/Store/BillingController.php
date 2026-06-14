@@ -71,8 +71,8 @@ class BillingController extends Controller
             return $this->notFoundResponse('Store not found.');
         }
 
-        $subscription = Subscription::create([
-            'store_id' => $store->id,
+        // store_id is excluded from $fillable — set via direct assignment.
+        $subscription = new Subscription([
             'plan_id' => $plan->id,
             'status' => 'pending',
             'payment_gateway' => $gateway->slug,
@@ -82,6 +82,8 @@ class BillingController extends Controller
             'auto_renew' => $plan->billing_cycle !== 'lifetime',
             'starts_at' => now(),
         ]);
+        $subscription->store_id = $store->id;
+        $subscription->save();
 
         try {
             $paymentGateway = $manager->for($gateway->slug);

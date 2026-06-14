@@ -74,9 +74,17 @@ class ProductController extends Controller
 
         $products = $query->paginate($request->input('per_page', 20));
 
+        // Batch-load stock to avoid N+1 (one query for all product IDs)
+        $productIds = $products->getCollection()->pluck('id');
+        $stockMap = \App\Models\InventoryItem::whereIn('product_id', $productIds)
+            ->whereNull('variant_id')
+            ->groupBy('product_id')
+            ->selectRaw('product_id, SUM(COALESCE(quantity, 0)) as total_qty')
+            ->pluck('total_qty', 'product_id');
+
         // Append total stock to each product
-        $products->getCollection()->transform(function (Product $p) {
-            $p->total_stock = $p->totalStock();
+        $products->getCollection()->transform(function (Product $p) use ($stockMap) {
+            $p->total_stock = $stockMap[$p->id] ?? 0;
             return $p;
         });
 

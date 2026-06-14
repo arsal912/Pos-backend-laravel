@@ -26,7 +26,7 @@ class SaleController extends Controller
             return $this->errorResponse('Unauthorized.', 403);
         }
 
-        $query = Sale::with(['customer:id,name,phone', 'items'])
+        $query = Sale::with(['customer:id,name,phone', 'cashier:id,name', 'payments', 'items'])
             ->where('status', '!=', 'draft');
 
         if ($request->filled('status'))       $query->where('status', $request->input('status'));

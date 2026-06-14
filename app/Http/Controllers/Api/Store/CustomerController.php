@@ -18,7 +18,7 @@ class CustomerController extends Controller
             return $this->errorResponse('Unauthorized.', 403);
         }
 
-        $query = Customer::query();
+        $query = Customer::with('group');
 
         if ($search = $request->input('search')) {
             $query->search($search);
@@ -101,8 +101,38 @@ class CustomerController extends Controller
             return $this->errorResponse('Unauthorized.', 403);
         }
 
-        Customer::findOrFail($id)->delete();
+        $customer = Customer::findOrFail($id);
 
+        if ($request->boolean('hard')) {
+            // Hard delete: anonymize personal data but preserve transaction records
+            // (cannot fully delete — sales records needed for tax/accounting)
+            $customer->update([
+                'name'              => 'DELETED-' . $customer->id,
+                'email'             => null,
+                'phone'             => null,
+                'company'           => null,
+                'tax_number'        => null,
+                'billing_address'   => null,
+                'shipping_address'  => null,
+                'date_of_birth'     => null,
+                'notes'             => null,
+                'referral_code'     => null,
+                'tags'              => null,
+            ]);
+            // Add to opt-outs for all channels
+            foreach (['sms', 'email', 'whatsapp'] as $channel) {
+                if ($customer->phone || $customer->email) {
+                    \App\Models\CommunicationOptOut::firstOrCreate([
+                        'channel'   => $channel,
+                        'recipient' => $channel === 'email' ? ('deleted-' . $customer->id . '@deleted.invalid') : ('deleted-' . $customer->id),
+                    ], ['reason' => 'gdpr_erasure', 'opted_out_at' => now()]);
+                }
+            }
+            $customer->delete(); // soft delete for audit trail
+            return $this->successResponse(null, 'Customer data permanently anonymized. Transaction records preserved for compliance.');
+        }
+
+        $customer->delete(); // regular soft delete
         return $this->successResponse(null, 'Customer deleted.');
     }
 

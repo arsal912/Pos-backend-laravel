@@ -120,3 +120,10 @@ Route::prefix('api-logs')->group(function () {
     Route::get('{id}', [ApiLogController::class, 'show']);
     Route::post('purge', [ApiLogController::class, 'purge']);
 });
+
+// User account management
+Route::post('users/{id}/unlock', function (int $id) {
+    $user = \App\Models\User::findOrFail($id);
+    $user->update(['login_attempts' => 0, 'locked_until' => null]);
+    return response()->json(['success' => true, 'message' => 'User unlocked.']);
+})->whereNumber('id');

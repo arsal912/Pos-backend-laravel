@@ -14,10 +14,16 @@ class Subscription extends Model
 
     protected $connection = 'mysql';
 
+    /**
+     * store_id is server-controlled (always sourced from the authenticated tenant
+     * context, never from user input) — excluded from $fillable to prevent
+     * mass-assignment. Set it via direct property assignment before save().
+     * All other fields here are set exclusively by server-side billing logic
+     * (payment gateway callbacks, admin BillingController, RegisterController).
+     */
     protected $fillable = [
-        'store_id',
         'plan_id',
-        'status',          // active, expired, cancelled, pending
+        'status',
         'starts_at',
         'ends_at',
         'cancelled_at',

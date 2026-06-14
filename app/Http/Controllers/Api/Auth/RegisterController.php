@@ -59,8 +59,10 @@ class RegisterController extends Controller
                     ? Plan::findOrFail($validated['plan_id'])
                     : Plan::where('is_active', true)->orderBy('price')->first();
 
-                // 2. Create store
-                $store = Store::create([
+                // 2. Create store.
+                // status and is_active are excluded from $fillable — set them via
+                // direct property assignment to avoid mass-assignment exposure.
+                $store = new Store([
                     'name' => $validated['store_name'],
                     'slug' => $this->generateUniqueSlug($validated['store_name']),
                     'business_type' => $validated['business_type'] ?? 'general',
@@ -71,25 +73,29 @@ class RegisterController extends Controller
                     'country' => $validated['country'] ?? 'PK',
                     'currency' => $validated['currency'] ?? 'PKR',
                     'timezone' => 'Asia/Karachi',
-                    'status' => 'active',
-                    'is_active' => true,
                     'trial_ends_at' => now()->addDays(
                         $plan?->trial_days ?? config('app.free_trial_days', 14)
                     ),
                 ]);
+                $store->status    = 'active';
+                $store->is_active = true;
+                $store->save();
 
-                // 3. Create owner user without branch assignment yet
+                // 3. Create owner user without branch assignment yet.
+                // store_id, branch_id, is_super_admin, and email_verified_at are
+                // excluded from $fillable (server-controlled); set them directly.
                 $user = User::create([
                     'name' => $validated['name'],
                     'email' => $validated['email'],
                     'password' => $validated['password'],
                     'phone' => $validated['phone'] ?? null,
-                    'store_id' => $store->id,
-                    'branch_id' => null,
-                    'is_super_admin' => false,
                     'is_active' => true,
-                    'email_verified_at' => null,
                 ]);
+                $user->store_id = $store->id;
+                $user->branch_id = null;
+                $user->is_super_admin = false;
+                $user->email_verified_at = null;
+                $user->save();
 
                 $user->assignRole('store-owner');
 
@@ -117,8 +123,8 @@ class RegisterController extends Controller
 
             if ($result['plan']) {
                 $result['store']->run(function ($tenant) use ($result) {
-                    Subscription::create([
-                        'store_id' => $tenant->id,
+                    // store_id is excluded from $fillable — set via direct assignment.
+                    $subscription = new Subscription([
                         'plan_id' => $result['plan']->id,
                         'status' => $result['plan']->price > 0 ? 'pending' : 'active',
                         'starts_at' => now(),
@@ -129,6 +135,8 @@ class RegisterController extends Controller
                         'currency' => $result['plan']->currency,
                         'billing_cycle' => $result['plan']->billing_cycle,
                     ]);
+                    $subscription->store_id = $tenant->id;
+                    $subscription->save();
                 });
             }
 

@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\Store\AccountController;
 use App\Http\Controllers\Api\Store\BillingController;
 use App\Http\Controllers\Api\Store\CommunicationSettingsController;
+use App\Http\Controllers\Api\Store\DataExportController;
 use App\Http\Controllers\Api\Store\CustomerController;
 use App\Http\Controllers\Api\Store\ExpenseController;
 use App\Http\Controllers\Api\Store\ReportController;
@@ -443,6 +445,21 @@ Route::middleware('module:customer-communications')->prefix('message-templates')
     Route::put('{id}',               [MessageTemplateController::class, 'update'])->whereNumber('id');
     Route::delete('{id}',            [MessageTemplateController::class, 'destroy'])->whereNumber('id');
     Route::post('{id}/duplicate',    [MessageTemplateController::class, 'duplicate'])->whereNumber('id');
+});
+
+// ============================================================================
+// PHASE 8.1 — DATA EXPORT  (permission: manage-settings)
+// ============================================================================
+Route::prefix('data-export')->group(function () {
+    Route::get('/',                     [DataExportController::class, 'export']);
+    Route::get('{exportId}/{file}',     [DataExportController::class, 'download']);
+});
+
+// ============================================================================
+// PHASE 8.1 — ACCOUNT MANAGEMENT  (role: store-owner)
+// ============================================================================
+Route::prefix('account')->group(function () {
+    Route::post('request-deletion',     [AccountController::class, 'requestDeletion']);
 });
 
 // ============================================================================

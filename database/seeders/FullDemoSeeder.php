@@ -52,7 +52,8 @@ class FullDemoSeeder extends Seeder
             return;
         }
 
-        $store = Store::create([
+        // status and is_active are excluded from Store::$fillable — set directly.
+        $store = new Store([
             'name'          => 'Demo Store PK',
             'slug'          => 'demo-store-pk',
             'business_type' => 'retail',
@@ -63,36 +64,41 @@ class FullDemoSeeder extends Seeder
             'country'       => 'PK',
             'currency'      => 'PKR',
             'timezone'      => 'Asia/Karachi',
-            'status'        => 'active',
-            'is_active'     => true,
             'trial_ends_at' => now()->addDays(30),
         ]);
+        $store->status    = 'active';
+        $store->is_active = true;
+        $store->save();
 
         $this->command->info("✓ Store created: {$store->name} (ID: {$store->id})");
 
         // ── 2. Create owner user ───────────────────────────────────────────────
 
+        // store_id and email_verified_at are excluded from User::$fillable
+        // (server-controlled fields). Set them via direct property assignment.
         $owner = User::create([
-            'name'               => 'Demo Owner',
-            'email'              => $email,
-            'password'           => 'password',
-            'phone'              => '+92 300 1234567',
-            'store_id'           => $store->id,
-            'is_active'          => true,
-            'email_verified_at'  => now(),
+            'name'     => 'Demo Owner',
+            'email'    => $email,
+            'password' => 'password',
+            'phone'    => '+92 300 1234567',
+            'is_active' => true,
         ]);
+        $owner->store_id = $store->id;
+        $owner->email_verified_at = now();
+        $owner->save();
         $owner->assignRole('store-owner');
 
         // Cashier user
         $cashier = User::create([
-            'name'               => 'Demo Cashier',
-            'email'              => 'cashier@demostore.com',
-            'password'           => 'password',
-            'phone'              => '+92 301 9876543',
-            'store_id'           => $store->id,
-            'is_active'          => true,
-            'email_verified_at'  => now(),
+            'name'     => 'Demo Cashier',
+            'email'    => 'cashier@demostore.com',
+            'password' => 'password',
+            'phone'    => '+92 301 9876543',
+            'is_active' => true,
         ]);
+        $cashier->store_id = $store->id;
+        $cashier->email_verified_at = now();
+        $cashier->save();
         $cashier->assignRole('cashier');
 
         $this->command->info("✓ Users created: {$email} / password");
