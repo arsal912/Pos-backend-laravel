@@ -83,7 +83,7 @@ class CreditController extends Controller
 
         $totalOutstanding = Customer::where('outstanding_balance', '>', 0)->sum('outstanding_balance');
 
-        return $this->paginatedResponse($customers, [
+        return $this->paginatedResponse($customers, 'Success', 200, [
             'total_outstanding' => (float) $totalOutstanding,
         ]);
     }
@@ -155,6 +155,6 @@ class CreditController extends Controller
             'this_month'=> (float) CreditTransaction::where('type','payment_received')->whereMonth('created_at',$now->month)->whereYear('created_at',$now->year)->selectRaw('ABS(SUM(amount)) as t')->value('t'),
         ];
 
-        return $this->paginatedResponse($payments, ['stats' => $stats]);
+        return $this->paginatedResponse($payments, 'Success', 200, ['stats' => $stats]);
     }
 }
