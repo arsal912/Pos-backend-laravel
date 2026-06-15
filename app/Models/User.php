@@ -16,6 +16,8 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable, HasRoles;
 
+    protected $connection = 'mysql'; // always central DB
+
     /**
      * Only user-supplied registration/profile fields belong here.
      * Server-controlled fields (is_super_admin, store_id, branch_id,

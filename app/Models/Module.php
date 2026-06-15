@@ -11,6 +11,8 @@ class Module extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql'; // always central DB
+
     protected $fillable = [
         'name',
         'slug',

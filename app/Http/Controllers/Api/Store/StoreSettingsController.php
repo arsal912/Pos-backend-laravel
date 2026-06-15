@@ -64,7 +64,9 @@ class StoreSettingsController extends Controller
      */
     public function getProfile(Request $request): JsonResponse
     {
-        $store = $request->user()->store;
+        // Use current_store_id from tenancy context (always set for store routes)
+        $storeId = app('current_store_id');
+        $store   = \App\Models\Store::find($storeId);
         if (! $store) return $this->errorResponse('Store not found.', 404);
 
         return $this->successResponse(['store' => $store->only([
@@ -82,7 +84,8 @@ class StoreSettingsController extends Controller
             return $this->errorResponse('Unauthorized.', 403);
         }
 
-        $store = $request->user()->store;
+        $storeId = app('current_store_id');
+        $store   = \App\Models\Store::find($storeId);
         if (! $store) return $this->errorResponse('Store not found.', 404);
 
         $validated = $request->validate([

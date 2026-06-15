@@ -10,6 +10,8 @@ class ApiLog extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql'; // always central DB
+
     protected $table = 'api_loggings';
 
     protected $fillable = [
