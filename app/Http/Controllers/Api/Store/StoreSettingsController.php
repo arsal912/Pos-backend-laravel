@@ -60,6 +60,51 @@ class StoreSettingsController extends Controller
     }
 
     /**
+     * GET /store/profile — return current store details (name, currency, timezone, etc.)
+     */
+    public function getProfile(Request $request): JsonResponse
+    {
+        $store = $request->user()->store;
+        if (! $store) return $this->errorResponse('Store not found.', 404);
+
+        return $this->successResponse(['store' => $store->only([
+            'id', 'name', 'email', 'phone', 'address', 'city', 'country',
+            'currency', 'timezone', 'business_type', 'whatsapp_number', 'logo',
+        ])]);
+    }
+
+    /**
+     * PUT /store/profile — update store profile including currency and timezone.
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        if (! $request->user()->can('manage-settings')) {
+            return $this->errorResponse('Unauthorized.', 403);
+        }
+
+        $store = $request->user()->store;
+        if (! $store) return $this->errorResponse('Store not found.', 404);
+
+        $validated = $request->validate([
+            'name'          => 'sometimes|string|max:150',
+            'phone'         => 'nullable|string|max:30',
+            'address'       => 'nullable|string|max:500',
+            'city'          => 'nullable|string|max:100',
+            'country'       => 'nullable|string|max:100',
+            'currency'      => 'sometimes|string|size:3|in:PKR,USD,EUR,GBP,AED,SAR,INR,CAD,AUD,BDT,LKR,NPR,MYR,SGD,THB',
+            'timezone'      => 'sometimes|string|max:60',
+            'business_type' => 'nullable|string|max:100',
+        ]);
+
+        $store->fill($validated)->save();
+
+        return $this->successResponse(['store' => $store->fresh()->only([
+            'id', 'name', 'email', 'phone', 'address', 'city', 'country',
+            'currency', 'timezone', 'business_type', 'whatsapp_number', 'logo',
+        ])], 'Store profile updated.');
+    }
+
+    /**
      * PUT /store/settings/whatsapp — store owner sets their WhatsApp Business number.
      * This is the number customers will message to request reports.
      */

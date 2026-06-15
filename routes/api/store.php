@@ -375,6 +375,10 @@ Route::prefix('receipt-templates')->group(function () {
     Route::get('{id}/preview',         [ReceiptTemplateController::class, 'preview'])->whereNumber('id');
 });
 
+// Store profile (name, currency, timezone, contact)
+Route::get('profile',  [StoreSettingsController::class, 'getProfile']);
+Route::put('profile',  [StoreSettingsController::class, 'updateProfile']);
+
 // POS / store settings (key-value store in tenant DB)
 Route::prefix('settings')->group(function () {
     Route::get('/',    [StoreSettingsController::class, 'index']);
