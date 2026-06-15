@@ -23,6 +23,8 @@ use App\Http\Controllers\Api\Store\Pos\OfflineSalesSyncController;
 use App\Http\Controllers\Api\Store\Pos\PosSyncController;
 use App\Http\Controllers\Api\Store\Pos\SaleController;
 use App\Http\Controllers\Api\Store\ReceiptTemplateController;
+use App\Http\Controllers\Api\Store\RoleManagementController;
+use App\Http\Controllers\Api\Store\StaffController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\Catalog\BrandController;
 use App\Http\Controllers\Api\Store\Catalog\CategoryController;
@@ -379,6 +381,25 @@ Route::prefix('settings')->group(function () {
     Route::put('/',    [StoreSettingsController::class, 'update']);
     Route::post('logo',      [StoreSettingsController::class, 'uploadLogo']);
     Route::put('whatsapp',   [StoreSettingsController::class, 'updateWhatsapp']);
+});
+
+// ── Role management (requires manage-users) ──────────────────────────────────
+Route::middleware('module:staff')->prefix('roles')->group(function () {
+    Route::get('/',                        [RoleManagementController::class, 'index']);
+    Route::post('/',                       [RoleManagementController::class, 'store']);
+    Route::get('permissions',              [RoleManagementController::class, 'permissions']);
+    Route::get('{id}',                     [RoleManagementController::class, 'show'])->whereNumber('id');
+    Route::put('{id}',                     [RoleManagementController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',                  [RoleManagementController::class, 'destroy'])->whereNumber('id');
+    Route::put('{id}/permissions',         [RoleManagementController::class, 'syncPermissions'])->whereNumber('id');
+});
+
+// ── Staff management (requires manage-users) ────────────────────────────────
+Route::middleware('module:staff')->prefix('staff')->group(function () {
+    Route::get('/',                        [StaffController::class, 'index']);
+    Route::post('/',                       [StaffController::class, 'store']);
+    Route::put('{id}',                     [StaffController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',                  [StaffController::class, 'destroy'])->whereNumber('id');
 });
 
 // Branches — simple list used by inventory, POS, etc.

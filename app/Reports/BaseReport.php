@@ -158,7 +158,14 @@ abstract class BaseReport implements ReportInterface
         $tenantId = app()->bound('current_store') ? (app('current_store')?->id ?? 'global') : 'global';
         $key      = "report:{$tenantId}:{$slug}:" . md5(json_encode($filters));
 
-        return Cache::remember($key, now()->addMinutes(5), $callback);
+        // Use the array driver (per-request cache) — safe with all cache backends
+        // including database and file which do NOT support tags.
+        // For persistent cross-request caching, switch CACHE_STORE to redis.
+        try {
+            return Cache::driver('array')->remember($key, now()->addMinutes(5), $callback);
+        } catch (\Throwable) {
+            return $callback();
+        }
     }
 
     // ── Meta helper ───────────────────────────────────────────────────────────

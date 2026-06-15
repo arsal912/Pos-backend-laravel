@@ -96,9 +96,37 @@ class RolePermissionSeeder extends Seeder
             ],
         ];
 
+        // Additional roles — Phase 7 role management module
+        $roles['finance'] = [
+            'view-reports', 'export-reports', 'view-profit-loss', 'view-staff-reports',
+            'manage-expenses', 'view-customers', 'view-sales', 'view-loyalty',
+        ];
+        $roles['floor-staff'] = [
+            'view-products', 'create-sales', 'view-sales', 'view-customers', 'view-loyalty',
+        ];
+        $roles['store-admin'] = $permissions; // same as store-owner
+
+        // Role metadata (description + color for UI)
+        $roleMeta = [
+            'super-admin'    => ['description' => 'Full platform access — super admin only',               'color' => '#ef4444', 'is_system' => 1],
+            'store-owner'    => ['description' => 'Full store access including billing',                  'color' => '#6366f1', 'is_system' => 1],
+            'store-admin'    => ['description' => 'Full store access except billing',                     'color' => '#8b5cf6', 'is_system' => 1],
+            'store-manager'  => ['description' => 'Most store features — no billing or role management',  'color' => '#3b82f6', 'is_system' => 1],
+            'cashier'        => ['description' => 'POS sales, basic customer lookup',                     'color' => '#10b981', 'is_system' => 1],
+            'inventory-staff'=> ['description' => 'Products, inventory, suppliers — no POS sales',       'color' => '#f59e0b', 'is_system' => 1],
+            'finance'        => ['description' => 'Reports and expenses — no POS or product editing',    'color' => '#06b6d4', 'is_system' => 1],
+            'floor-staff'    => ['description' => 'Basic POS only — scan, sell, view customers',         'color' => '#84cc16', 'is_system' => 1],
+        ];
+
         foreach ($roles as $roleName => $perms) {
             foreach (['web', 'sanctum'] as $guard) {
-                $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => $guard]);
+                $meta = $roleMeta[$roleName] ?? ['description' => null, 'color' => '#6366f1', 'is_system' => 1];
+                $role = Role::firstOrCreate(
+                    ['name' => $roleName, 'guard_name' => $guard],
+                    ['description' => $meta['description'], 'color' => $meta['color'], 'is_system' => $meta['is_system']]
+                );
+                // Update metadata on existing rows too
+                $role->update(['description' => $meta['description'], 'color' => $meta['color'], 'is_system' => $meta['is_system']]);
                 $role->syncPermissions(
                     Permission::whereIn('name', $perms)->where('guard_name', $guard)->get()
                 );
