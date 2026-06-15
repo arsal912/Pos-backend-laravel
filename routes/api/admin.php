@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AdminExpensesController;
 use App\Http\Controllers\Api\Admin\AdminPosDevicesController;
 use App\Http\Controllers\Api\Admin\AdminReportController;
 use App\Http\Controllers\Api\Admin\ApiLogController;
@@ -71,12 +72,14 @@ Route::prefix('payment-gateways')->group(function () {
 // Central billing / subscription management
 Route::prefix('billing')->group(function () {
     Route::get('stats', [BillingController::class, 'stats']);
+    Route::get('subscription-report', [BillingController::class, 'subscriptionReport']);
 
     Route::get('subscriptions', [BillingController::class, 'subscriptions']);
     Route::get('subscriptions/{id}', [BillingController::class, 'showSubscription']);
     Route::post('subscriptions/{id}/extend', [BillingController::class, 'extendSubscription']);
     Route::post('subscriptions/{id}/cancel', [BillingController::class, 'cancelSubscription']);
     Route::post('subscriptions/{id}/reactivate', [BillingController::class, 'reactivateSubscription']);
+    Route::post('subscriptions/{id}/mark-unpaid', [BillingController::class, 'markUnpaid']);
 
     Route::get('payments', [BillingController::class, 'payments']);
     Route::get('payments/{id}', [BillingController::class, 'showPayment']);
@@ -122,6 +125,9 @@ Route::prefix('api-logs')->group(function () {
     Route::get('{id}', [ApiLogController::class, 'show']);
     Route::post('purge', [ApiLogController::class, 'purge']);
 });
+
+// Platform-wide Expense Overview
+Route::get('expenses/overview', [AdminExpensesController::class, 'overview']);
 
 // User account management
 Route::post('users/{id}/unlock', function (int $id) {

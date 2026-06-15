@@ -293,6 +293,160 @@ class BillingController extends Controller
         ]);
     }
 
+    /**
+     * GET /admin/billing/subscription-report
+     *
+     * Categorises every store into one of:
+     *   paid      — active subscription, amount > 0, has a successful payment this billing period
+     *   free      — active subscription but amount = 0 (free plan / trial)
+     *   pending   — subscription status = 'pending' (awaiting first payment)
+     *   expiring  — active but ends_at within 7 days
+     *   defaulter — subscription expired or grace period passed, store still "active"
+     *   cancelled — subscription cancelled
+     *   no_sub    — store has no subscription record at all
+     */
+    public function subscriptionReport(Request $request): JsonResponse
+    {
+        $now = now();
+        $monthStart = $now->copy()->startOfMonth();
+
+        // All stores with their latest subscription + plan
+        $stores = Store::with(['activeSubscription.plan', 'subscriptions' => fn ($q) =>
+                $q->latest()->limit(1)
+            ])
+            ->orderBy('name')
+            ->get();
+
+        $report = [
+            'paid'      => [],
+            'trial'     => [],
+            'free'      => [],
+            'pending'   => [],
+            'expiring'  => [],
+            'defaulter' => [],
+            'cancelled' => [],
+            'no_sub'    => [],
+        ];
+
+        $summary = [
+            'paid'      => 0,
+            'trial'     => 0,
+            'free'      => 0,
+            'pending'   => 0,
+            'expiring'  => 0,
+            'defaulter' => 0,
+            'cancelled' => 0,
+            'no_sub'    => 0,
+            'total_stores' => $stores->count(),
+            'mrr'       => 0.0, // Monthly Recurring Revenue (paid plans)
+        ];
+
+        foreach ($stores as $store) {
+            $sub  = $store->activeSubscription ?? $store->subscriptions->first();
+            $plan = $sub?->plan;
+
+            $isOnTrial     = $store->trial_ends_at && $store->trial_ends_at->isFuture();
+            $trialDaysLeft = $isOnTrial ? max(0, (int) $now->diffInDays($store->trial_ends_at, false)) : null;
+
+            $row = [
+                'store_id'          => $store->id,
+                'store_name'        => $store->name,
+                'store_email'       => $store->email,
+                'subscription_id'   => $sub?->id,
+                'store_status'      => $store->status,
+                'registered_at'     => $store->created_at,           // NEW: store registration date
+                'plan_name'         => $plan?->name ?? 'None',
+                'amount'            => $sub ? (float) $sub->amount : 0.0,
+                'currency'          => $sub?->currency ?? 'PKR',
+                'billing_cycle'     => $sub?->billing_cycle ?? null,
+                'ends_at'           => $sub?->ends_at,
+                'next_billing_at'   => $sub?->next_billing_at,
+                'payment_gateway'   => $sub?->payment_gateway,
+                'sub_status'        => $sub?->status ?? 'none',
+                'trial_ends_at'     => $store->trial_ends_at,        // NEW: trial expiry date
+                'is_on_trial'       => $isOnTrial,                   // NEW: is currently in trial
+                'trial_days_left'   => $trialDaysLeft,               // NEW: days remaining on trial
+                'last_payment'      => null,
+                'days_until_expiry' => $sub?->ends_at ? (int) $now->diffInDays($sub->ends_at, false) : null,
+            ];
+
+            // Last successful payment for this store this month
+            $lastPayment = Payment::where('store_id', $store->id)
+                ->where('status', 'completed')
+                ->where('paid_at', '>=', $monthStart)
+                ->latest('paid_at')
+                ->first();
+
+            if ($lastPayment) {
+                $row['last_payment'] = [
+                    'amount'  => (float) $lastPayment->amount,
+                    'paid_at' => $lastPayment->paid_at,
+                    'gateway' => $lastPayment->gateway,
+                ];
+            }
+
+            // Classify — trial checked first so active-trial stores show in Trial, not Paid/Free
+            if (! $sub) {
+                $bucket = $isOnTrial ? 'trial' : 'no_sub';
+            } elseif ($sub->status === 'cancelled') {
+                $bucket = 'cancelled';
+            } elseif ($sub->status === 'expired' || $store->status === 'expired') {
+                $bucket = 'defaulter';
+            } elseif ($sub->status === 'pending') {
+                $bucket = $isOnTrial ? 'trial' : 'pending';
+            } elseif ($isOnTrial && (float) $sub->amount == 0) {
+                // Free plan + active trial → Trial bucket
+                $bucket = 'trial';
+            } elseif ((float) $sub->amount == 0) {
+                $bucket = 'free';
+            } elseif ($sub->ends_at && $sub->ends_at->diffInDays($now, false) <= 0 && $sub->ends_at->diffInDays($now, false) > -7) {
+                $bucket = 'expiring';
+            } elseif ($sub->status === 'active' && (float) $sub->amount > 0) {
+                $bucket = 'paid';
+                $summary['mrr'] += (float) $sub->amount;
+            } else {
+                $bucket = 'no_sub';
+            }
+
+            $report[$bucket][] = $row;
+            $summary[$bucket]++;
+        }
+
+        $summary['mrr'] = round($summary['mrr'], 2);
+
+        return $this->successResponse([
+            'summary'    => $summary,
+            'report'     => $report,
+            'generated_at' => $now->toIso8601String(),
+            'period'     => $monthStart->format('F Y'),
+        ]);
+    }
+
+    /**
+     * POST /admin/billing/subscriptions/{id}/mark-unpaid
+     * Manually marks an active subscription as pending (unpaid).
+     * Useful for cash/bank stores that miss a payment cycle.
+     */
+    public function markUnpaid(int $id): JsonResponse
+    {
+        $subscription = Subscription::with('store')->findOrFail($id);
+
+        $subscription->update(['status' => 'pending']);
+
+        PaymentEvent::create([
+            'store_id'        => $subscription->store_id,
+            'subscription_id' => $subscription->id,
+            'event_type'      => 'subscription_updated',
+            'gateway'         => 'manual',
+            'data'            => ['action' => 'admin_mark_unpaid', 'by' => auth()->id()],
+        ]);
+
+        return $this->successResponse(
+            ['subscription' => $subscription->fresh('plan')],
+            'Subscription marked as unpaid (pending).'
+        );
+    }
+
     private function computeSuccessRate(): float
     {
         $total     = Payment::whereIn('status', ['completed', 'failed'])->count();
