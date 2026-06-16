@@ -26,10 +26,15 @@ class InventoryController extends Controller
         $query = InventoryItem::with([
             'product:id,name,sku,cost_price,low_stock_threshold,allow_negative_stock',
             'variant:id,name,sku',
+            'warehouse:id,name,code',
         ]);
 
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->input('branch_id'));
+        }
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('warehouse_id', $request->input('warehouse_id'));
         }
 
         if ($request->boolean('low_stock')) {
@@ -69,12 +74,15 @@ class InventoryController extends Controller
             return $this->errorResponse('Unauthorized.', 403);
         }
 
-        $items = InventoryItem::with(['variant:id,name,sku'])
+        $items = InventoryItem::with(['variant:id,name,sku', 'warehouse:id,name,code'])
             ->where('product_id', $productId)
             ->get()
             ->map(function (InventoryItem $item) {
-                $item->available   = max(0, (float) $item->quantity - (float) $item->reserved_quantity);
+                $item->available    = max(0, (float) $item->quantity - (float) $item->reserved_quantity);
                 $item->stock_status = $this->stockStatus($item);
+                $item->location_label = $item->warehouse
+                    ? "WH: {$item->warehouse->name}"
+                    : "Branch #{$item->branch_id}";
                 return $item;
             });
 
@@ -82,9 +90,10 @@ class InventoryController extends Controller
             ->find($productId);
 
         return $this->successResponse([
-            'product'       => $product,
-            'stock_by_branch' => $items,
-            'total_quantity'  => $items->sum('quantity'),
+            'product'          => $product,
+            'stock_by_location' => $items,
+            'stock_by_branch'   => $items, // backward compat alias
+            'total_quantity'    => $items->sum('quantity'),
         ]);
     }
 
@@ -103,11 +112,12 @@ class InventoryController extends Controller
             'variant:id,name,sku',
         ]);
 
-        if ($request->filled('product_id'))  $query->where('product_id', $request->input('product_id'));
-        if ($request->filled('branch_id'))   $query->where('branch_id', $request->input('branch_id'));
-        if ($request->filled('type'))        $query->where('type', $request->input('type'));
-        if ($request->filled('date_from'))   $query->where('created_at', '>=', $request->input('date_from'));
-        if ($request->filled('date_to'))     $query->where('created_at', '<=', $request->input('date_to') . ' 23:59:59');
+        if ($request->filled('product_id'))   $query->where('product_id', $request->input('product_id'));
+        if ($request->filled('branch_id'))    $query->where('branch_id', $request->input('branch_id'));
+        if ($request->filled('warehouse_id')) $query->where('warehouse_id', $request->input('warehouse_id'));
+        if ($request->filled('type'))         $query->where('type', $request->input('type'));
+        if ($request->filled('date_from'))    $query->where('created_at', '>=', $request->input('date_from'));
+        if ($request->filled('date_to'))      $query->where('created_at', '<=', $request->input('date_to') . ' 23:59:59');
 
         $movements = $query->latest()->paginate($request->input('per_page', 30));
 

@@ -11,7 +11,9 @@ class StockTransfer extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'transfer_number', 'from_branch_id', 'to_branch_id',
+        'transfer_number',
+        'from_branch_id', 'from_warehouse_id',
+        'to_branch_id',   'to_warehouse_id',
         'transfer_date', 'received_date', 'status',
         'notes', 'created_by', 'received_by',
     ];

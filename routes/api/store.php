@@ -25,6 +25,9 @@ use App\Http\Controllers\Api\Store\Pos\SaleController;
 use App\Http\Controllers\Api\Store\ReceiptTemplateController;
 use App\Http\Controllers\Api\Store\RoleManagementController;
 use App\Http\Controllers\Api\Store\StaffController;
+use App\Http\Controllers\Api\Store\BranchController;
+use App\Http\Controllers\Api\Store\WarehouseController;
+use App\Http\Controllers\Api\Store\NetworkInventoryController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\Catalog\BrandController;
 use App\Http\Controllers\Api\Store\Catalog\CategoryController;
@@ -163,6 +166,7 @@ Route::middleware('module:inventory')->group(function () {
         Route::post('/',             [StockTransferController::class, 'store']);
         Route::post('{id}/send',     [StockTransferController::class, 'send'])->whereNumber('id');
         Route::post('{id}/receive',  [StockTransferController::class, 'receive'])->whereNumber('id');
+        Route::post('{id}/cancel',   [StockTransferController::class, 'cancel'])->whereNumber('id');
     });
 });
 
@@ -406,10 +410,20 @@ Route::middleware('module:staff')->prefix('staff')->group(function () {
     Route::delete('{id}',                  [StaffController::class, 'destroy'])->whereNumber('id');
 });
 
-// Branches — simple list used by inventory, POS, etc.
-Route::get('branches', function () {
-    $branches = \App\Models\Branch::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code', 'is_main']);
-    return response()->json(['success' => true, 'data' => $branches]);
+// Branches — list (all users) + CRUD (manage-branches)
+Route::prefix('branches')->group(function () {
+    Route::get('/',         [BranchController::class, 'index']);
+    Route::post('/',        [BranchController::class, 'store']);
+    Route::put('{id}',      [BranchController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',   [BranchController::class, 'destroy'])->whereNumber('id');
+});
+
+// Warehouses — list (all users) + CRUD (manage-branches)
+Route::prefix('warehouses')->group(function () {
+    Route::get('/',         [WarehouseController::class, 'index']);
+    Route::post('/',        [WarehouseController::class, 'store']);
+    Route::put('{id}',      [WarehouseController::class, 'update'])->whereNumber('id');
+    Route::delete('{id}',   [WarehouseController::class, 'destroy'])->whereNumber('id');
 });
 
 // ============================================================================
@@ -487,6 +501,24 @@ Route::prefix('data-export')->group(function () {
 // ============================================================================
 Route::prefix('account')->group(function () {
     Route::post('request-deletion',     [AccountController::class, 'requestDeletion']);
+});
+
+// ============================================================================
+// NETWORK INVENTORY — cross-store inventory visibility & transfer requests
+// ============================================================================
+Route::prefix('network')->group(function () {
+    // Browse other stores' inventory snapshots
+    Route::get('inventory',                   [NetworkInventoryController::class, 'index']);
+    Route::get('stores',                      [NetworkInventoryController::class, 'stores']);
+
+    // Transfer requests
+    Route::get('requests',                    [NetworkInventoryController::class, 'listRequests']);
+    Route::post('requests',                   [NetworkInventoryController::class, 'createRequest']);
+    Route::post('requests/{id}/approve',      [NetworkInventoryController::class, 'approve'])->whereNumber('id');
+    Route::post('requests/{id}/reject',       [NetworkInventoryController::class, 'reject'])->whereNumber('id');
+    Route::post('requests/{id}/dispatch',     [NetworkInventoryController::class, 'dispatch'])->whereNumber('id');
+    Route::post('requests/{id}/complete',     [NetworkInventoryController::class, 'complete'])->whereNumber('id');
+    Route::post('requests/{id}/cancel',       [NetworkInventoryController::class, 'cancel'])->whereNumber('id');
 });
 
 // ============================================================================

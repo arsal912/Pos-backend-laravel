@@ -8,6 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('whatsapp_report_requests')) return;
         Schema::create('whatsapp_report_requests', function (Blueprint $table) {
             $table->id();
             $table->string('from_number', 30);

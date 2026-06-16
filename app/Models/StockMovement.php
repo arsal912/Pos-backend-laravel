@@ -11,7 +11,7 @@ class StockMovement extends Model
     public const UPDATED_AT = null; // Stock movements are immutable
 
     protected $fillable = [
-        'product_id', 'variant_id', 'branch_id', 'type',
+        'product_id', 'variant_id', 'branch_id', 'warehouse_id', 'type',
         'reference_type', 'reference_id',
         'quantity', 'cost_at_time', 'balance_after',
         'notes', 'created_by',

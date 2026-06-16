@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InventoryItem extends Model
 {
     protected $fillable = [
-        'product_id', 'variant_id', 'branch_id',
+        'product_id', 'variant_id', 'branch_id', 'warehouse_id',
         'quantity', 'reserved_quantity', 'last_counted_at',
     ];
 
@@ -29,6 +29,11 @@ class InventoryItem extends Model
     public function variant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class, 'variant_id');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     /** Available = quantity − reserved */

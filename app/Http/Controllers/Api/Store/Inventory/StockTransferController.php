@@ -40,27 +40,39 @@ class StockTransferController extends Controller
         }
 
         $validated = $request->validate([
-            'from_branch_id'         => 'required|integer',
-            'to_branch_id'           => 'required|integer|different:from_branch_id',
-            'transfer_date'          => 'required|date',
-            'notes'                  => 'nullable|string',
-            'items'                  => 'required|array|min:1',
-            'items.*.product_id'     => 'required|exists:products,id',
-            'items.*.variant_id'     => 'nullable|exists:product_variants,id',
-            'items.*.quantity_sent'  => 'required|numeric|min:0.001',
+            'from_branch_id'      => 'nullable|integer',
+            'from_warehouse_id'   => 'nullable|integer',
+            'to_branch_id'        => 'nullable|integer',
+            'to_warehouse_id'     => 'nullable|integer',
+            'transfer_date'       => 'required|date',
+            'notes'               => 'nullable|string',
+            'items'               => 'required|array|min:1',
+            'items.*.product_id'  => 'required|exists:products,id',
+            'items.*.variant_id'  => 'nullable|exists:product_variants,id',
+            'items.*.quantity_sent' => 'required|numeric|min:0.001',
         ]);
+
+        // At least one source and one destination must be provided
+        if (! $validated['from_branch_id'] && ! $validated['from_warehouse_id']) {
+            return $this->errorResponse('Provide a source branch or warehouse.', 422);
+        }
+        if (! $validated['to_branch_id'] && ! $validated['to_warehouse_id']) {
+            return $this->errorResponse('Provide a destination branch or warehouse.', 422);
+        }
 
         return DB::transaction(function () use ($validated) {
             $transferNumber = $this->generateNumber();
 
             $transfer = StockTransfer::create([
-                'transfer_number' => $transferNumber,
-                'from_branch_id'  => $validated['from_branch_id'],
-                'to_branch_id'    => $validated['to_branch_id'],
-                'transfer_date'   => $validated['transfer_date'],
-                'notes'           => $validated['notes'] ?? null,
-                'status'          => 'draft',
-                'created_by'      => auth()->id(),
+                'transfer_number'   => $transferNumber,
+                'from_branch_id'    => $validated['from_branch_id']    ?? null,
+                'from_warehouse_id' => $validated['from_warehouse_id'] ?? null,
+                'to_branch_id'      => $validated['to_branch_id']      ?? null,
+                'to_warehouse_id'   => $validated['to_warehouse_id']   ?? null,
+                'transfer_date'     => $validated['transfer_date'],
+                'notes'             => $validated['notes'] ?? null,
+                'status'            => 'draft',
+                'created_by'        => auth()->user()?->id,
             ]);
 
             foreach ($validated['items'] as $item) {
@@ -97,7 +109,10 @@ class StockTransferController extends Controller
                     (float) $item->quantity_sent,
                     'transfer_out',
                     'stock_transfer',
-                    $transfer->id
+                    $transfer->id,
+                    0,
+                    null,
+                    $transfer->from_warehouse_id
                 );
             }
             $transfer->update(['status' => 'in_transit']);
@@ -142,7 +157,10 @@ class StockTransferController extends Controller
                         $received,
                         'transfer_in',
                         'stock_transfer',
-                        $transfer->id
+                        $transfer->id,
+                        0,
+                        null,
+                        $transfer->to_warehouse_id
                     );
                 }
 
@@ -150,13 +168,30 @@ class StockTransferController extends Controller
             }
 
             $transfer->update([
-                'status'       => 'received',
+                'status'        => 'received',
                 'received_date' => now()->toDateString(),
-                'received_by'  => auth()->id(),
+                'received_by'   => auth()->user()?->id,
             ]);
         });
 
         return $this->successResponse(['transfer' => $transfer->fresh('items')], 'Transfer received — stock added to destination.');
+    }
+
+    public function cancel(Request $request, int $id): JsonResponse
+    {
+        if (! $request->user()->can('transfer-stock')) {
+            return $this->errorResponse('Unauthorized.', 403);
+        }
+
+        $transfer = StockTransfer::findOrFail($id);
+
+        if ($transfer->status !== 'draft') {
+            return $this->errorResponse('Only draft transfers can be cancelled.', 422);
+        }
+
+        $transfer->update(['status' => 'cancelled']);
+
+        return $this->successResponse(['transfer' => $transfer->fresh()], 'Transfer cancelled.');
     }
 
     private function generateNumber(): string

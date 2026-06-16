@@ -46,13 +46,17 @@ class StockTransferReport extends BaseReport
             $toBranch   = $filters['to_branch_id'] ?? null;
             $status     = $filters['status'] ?? null;
 
-            $rows = DB::table('stock_transfers')
-                ->whereBetween('transfer_date', [$start->toDateString(), $end->toDateString()])
-                ->when($fromBranch, fn($q) => $q->where('from_branch_id', $fromBranch))
-                ->when($toBranch,   fn($q) => $q->where('to_branch_id', $toBranch))
-                ->when($status,     fn($q) => $q->where('status', $status))
-                ->select('transfer_number','from_branch_id','to_branch_id','transfer_date','received_date','status','notes')
-                ->orderByDesc('transfer_date')
+            $rows = DB::table('stock_transfers as st')
+                ->join('branches as fb', 'fb.id', '=', 'st.from_branch_id')
+                ->join('branches as tb', 'tb.id', '=', 'st.to_branch_id')
+                ->whereBetween('st.transfer_date', [$start->toDateString(), $end->toDateString()])
+                ->when($fromBranch, fn($q) => $q->where('st.from_branch_id', $fromBranch))
+                ->when($toBranch,   fn($q) => $q->where('st.to_branch_id', $toBranch))
+                ->when($status,     fn($q) => $q->where('st.status', $status))
+                ->select('st.id','st.transfer_number','st.from_branch_id','st.to_branch_id',
+                         'fb.name as from_branch_name','tb.name as to_branch_name',
+                         'st.transfer_date','st.received_date','st.status','st.notes')
+                ->orderByDesc('st.transfer_date')
                 ->get();
 
             // Item counts per transfer
@@ -64,8 +68,8 @@ class StockTransferReport extends BaseReport
 
             $enriched = $rows->map(fn($r) => [
                 'transfer_number' => $r->transfer_number,
-                'from_branch'     => "Branch {$r->from_branch_id}",
-                'to_branch'       => "Branch {$r->to_branch_id}",
+                'from_branch'     => $r->from_branch_name,
+                'to_branch'       => $r->to_branch_name,
                 'transfer_date'   => $r->transfer_date,
                 'received_date'   => $r->received_date ?? '—',
                 'status'          => ucfirst(str_replace('_', ' ', $r->status)),
