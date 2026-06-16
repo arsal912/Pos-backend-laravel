@@ -26,11 +26,35 @@ class StockTransferController extends Controller
 
         $query = StockTransfer::with('items.product:id,name,sku')->latest();
 
-        if ($request->filled('status'))         $query->where('status', $request->input('status'));
-        if ($request->filled('from_branch_id')) $query->where('from_branch_id', $request->input('from_branch_id'));
-        if ($request->filled('to_branch_id'))   $query->where('to_branch_id', $request->input('to_branch_id'));
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
+        }
+        // Filter by from-location (branch or warehouse)
+        if ($request->filled('from_branch_id')) {
+            $query->where('from_branch_id', $request->input('from_branch_id'));
+        } elseif ($request->filled('from_warehouse_id')) {
+            $query->where('from_warehouse_id', $request->input('from_warehouse_id'));
+        }
+        // Filter by to-location (branch or warehouse)
+        if ($request->filled('to_branch_id')) {
+            $query->where('to_branch_id', $request->input('to_branch_id'));
+        } elseif ($request->filled('to_warehouse_id')) {
+            $query->where('to_warehouse_id', $request->input('to_warehouse_id'));
+        }
 
         return $this->paginatedResponse($query->paginate($request->input('per_page', 20)));
+    }
+
+    public function show(Request $request, int $id): JsonResponse
+    {
+        if (! $request->user()->can('transfer-stock')) {
+            return $this->errorResponse('Unauthorized.', 403);
+        }
+
+        $transfer = StockTransfer::with('items.product:id,name,sku,cost_price')
+            ->findOrFail($id);
+
+        return $this->successResponse(['transfer' => $transfer]);
     }
 
     public function store(Request $request): JsonResponse
@@ -52,23 +76,33 @@ class StockTransferController extends Controller
             'items.*.quantity_sent' => 'required|numeric|min:0.001',
         ]);
 
+        $fromBranchId    = $validated['from_branch_id']    ?? null;
+        $fromWarehouseId = $validated['from_warehouse_id'] ?? null;
+        $toBranchId      = $validated['to_branch_id']      ?? null;
+        $toWarehouseId   = $validated['to_warehouse_id']   ?? null;
+
         // At least one source and one destination must be provided
-        if (! $validated['from_branch_id'] && ! $validated['from_warehouse_id']) {
-            return $this->errorResponse('Provide a source branch or warehouse.', 422);
+        if (! $fromBranchId && ! $fromWarehouseId) {
+            return $this->errorResponse('Select a source branch or warehouse.', 422);
         }
-        if (! $validated['to_branch_id'] && ! $validated['to_warehouse_id']) {
-            return $this->errorResponse('Provide a destination branch or warehouse.', 422);
+        if (! $toBranchId && ! $toWarehouseId) {
+            return $this->errorResponse('Select a destination branch or warehouse.', 422);
+        }
+        // Source and destination cannot be the same location
+        if (($fromBranchId && $fromBranchId === $toBranchId)
+         || ($fromWarehouseId && $fromWarehouseId === $toWarehouseId)) {
+            return $this->errorResponse('Source and destination must be different locations.', 422);
         }
 
-        return DB::transaction(function () use ($validated) {
+        return DB::transaction(function () use ($validated, $fromBranchId, $fromWarehouseId, $toBranchId, $toWarehouseId) {
             $transferNumber = $this->generateNumber();
 
             $transfer = StockTransfer::create([
                 'transfer_number'   => $transferNumber,
-                'from_branch_id'    => $validated['from_branch_id']    ?? null,
-                'from_warehouse_id' => $validated['from_warehouse_id'] ?? null,
-                'to_branch_id'      => $validated['to_branch_id']      ?? null,
-                'to_warehouse_id'   => $validated['to_warehouse_id']   ?? null,
+                'from_branch_id'    => $fromBranchId,
+                'from_warehouse_id' => $fromWarehouseId,
+                'to_branch_id'      => $toBranchId,
+                'to_warehouse_id'   => $toWarehouseId,
                 'transfer_date'     => $validated['transfer_date'],
                 'notes'             => $validated['notes'] ?? null,
                 'status'            => 'draft',

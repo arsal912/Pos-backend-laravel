@@ -257,4 +257,126 @@ class NetworkInventoryController extends Controller
 
         return $this->successResponse(['request' => $req->fresh()], 'Request cancelled.');
     }
+
+    // ── GET /store/network/my-inventory ──────────────────────────────────────
+    // My own snapshot rows — used to populate the product picker when sending.
+    public function myInventory(Request $request): JsonResponse
+    {
+        $myStoreId = app('current_store_id');
+
+        $rows = StoreInventorySnapshot::where('store_id', $myStoreId)
+            ->where('quantity', '>', 0)
+            ->when($request->filled('search'), fn ($q) =>
+                $q->where(function ($q2) use ($request) {
+                    $q2->where('product_name', 'like', '%' . $request->input('search') . '%')
+                       ->orWhere('product_sku',  'like', '%' . $request->input('search') . '%');
+                })
+            )
+            ->orderBy('product_name')
+            ->get();
+
+        return $this->successResponse(['inventory' => $rows]);
+    }
+
+    // ── GET /store/network/stores/{id}/locations ─────────────────────────────
+    // Returns branches + warehouses of another store by briefly running in
+    // that store's tenant context — read-only, safe.
+    public function storeLocations(int $storeId): JsonResponse
+    {
+        $myStoreId = app('current_store_id');
+        if ($storeId === $myStoreId) {
+            return $this->errorResponse('Use /store/branches and /store/warehouses for your own store.', 422);
+        }
+
+        $store = Store::findOrFail($storeId);
+
+        // Switch to the target tenant DB, read branches + warehouses, then end
+        tenancy()->initialize($store);
+
+        $branches   = \App\Models\Branch::where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'code', 'is_main']);
+
+        $warehouses = \App\Models\Warehouse::where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'code', 'type']);
+
+        tenancy()->end();
+
+        return $this->successResponse([
+            'store'      => ['id' => $store->id, 'name' => $store->name],
+            'branches'   => $branches,
+            'warehouses' => $warehouses,
+        ]);
+    }
+
+    // ── POST /store/network/send ──────────────────────────────────────────────
+    // My store pushes inventory TO another store. Creates an already-approved
+    // transfer so the destination just needs to confirm receipt.
+    public function sendToStore(Request $request): JsonResponse
+    {
+        $myStoreId = app('current_store_id');
+        $myStore   = Store::findOrFail($myStoreId);
+
+        $validated = $request->validate([
+            'destination_store_id'       => 'required|integer|different:' . $myStoreId,
+            'destination_location_type'  => 'required|in:branch,warehouse',
+            'destination_location_id'    => 'required|integer',
+            'destination_location_name'  => 'required|string|max:150',
+            'items'                      => 'required|array|min:1',
+            'items.*.product_sku'        => 'required|string|max:100',
+            'items.*.product_name'       => 'required|string|max:255',
+            'items.*.quantity'           => 'required|numeric|min:0.001',
+            'notes'                      => 'nullable|string|max:1000',
+        ]);
+
+        $destStore = Store::findOrFail($validated['destination_store_id']);
+
+        $created = [];
+        foreach ($validated['items'] as $item) {
+            // Check this store actually has stock of this SKU
+            $snapshot = StoreInventorySnapshot::where('store_id', $myStoreId)
+                ->where('product_sku', $item['product_sku'])
+                ->first();
+
+            if (! $snapshot || $snapshot->quantity < $item['quantity']) {
+                return $this->errorResponse(
+                    "Insufficient stock for {$item['product_sku']}. " .
+                    "Available: " . ($snapshot?->quantity ?? 0) . ", requested: {$item['quantity']}.",
+                    422
+                );
+            }
+
+            // Create as already-approved (we're the source and we're initiating)
+            $req = InterStoreTransferRequest::create([
+                // The SOURCE is us (we're sending)
+                'source_store_id'            => $myStoreId,
+                'source_store_name'          => $myStore->name,
+                // The REQUESTER is the destination (we're creating on their behalf)
+                'requesting_store_id'        => $destStore->id,
+                'requesting_store_name'      => $destStore->name,
+                'requesting_user_id'         => auth()->user()?->id,
+                'source_location_type'       => $snapshot->location_type,
+                'source_location_id'         => $snapshot->location_id,
+                'source_location_name'       => $snapshot->location_name,
+                'product_sku'                => $item['product_sku'],
+                'product_name'               => $item['product_name'],
+                'quantity_requested'         => $item['quantity'],
+                'quantity_fulfilled'         => $item['quantity'],
+                // Pre-approved since source is initiating
+                'status'                     => 'approved',
+                'request_notes'              => $validated['notes'] ?? null,
+                'actioned_by_user_id'        => auth()->user()?->id,
+                'actioned_at'                => now(),
+            ]);
+
+            $created[] = $req;
+        }
+
+        return $this->successResponse(
+            ['transfers' => $created, 'count' => count($created)],
+            count($created) . ' outbound transfer(s) created. Destination store will confirm receipt.',
+            201
+        );
+    }
 }

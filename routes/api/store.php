@@ -164,6 +164,7 @@ Route::middleware('module:inventory')->group(function () {
     Route::prefix('stock-transfers')->group(function () {
         Route::get('/',              [StockTransferController::class, 'index']);
         Route::post('/',             [StockTransferController::class, 'store']);
+        Route::get('{id}',           [StockTransferController::class, 'show'])->whereNumber('id');
         Route::post('{id}/send',     [StockTransferController::class, 'send'])->whereNumber('id');
         Route::post('{id}/receive',  [StockTransferController::class, 'receive'])->whereNumber('id');
         Route::post('{id}/cancel',   [StockTransferController::class, 'cancel'])->whereNumber('id');
@@ -509,11 +510,14 @@ Route::prefix('account')->group(function () {
 Route::prefix('network')->group(function () {
     // Browse other stores' inventory snapshots
     Route::get('inventory',                   [NetworkInventoryController::class, 'index']);
+    Route::get('my-inventory',                [NetworkInventoryController::class, 'myInventory']);
     Route::get('stores',                      [NetworkInventoryController::class, 'stores']);
+    Route::get('stores/{id}/locations',       [NetworkInventoryController::class, 'storeLocations'])->whereNumber('id');
 
     // Transfer requests
     Route::get('requests',                    [NetworkInventoryController::class, 'listRequests']);
     Route::post('requests',                   [NetworkInventoryController::class, 'createRequest']);
+    Route::post('send',                       [NetworkInventoryController::class, 'sendToStore']);
     Route::post('requests/{id}/approve',      [NetworkInventoryController::class, 'approve'])->whereNumber('id');
     Route::post('requests/{id}/reject',       [NetworkInventoryController::class, 'reject'])->whereNumber('id');
     Route::post('requests/{id}/dispatch',     [NetworkInventoryController::class, 'dispatch'])->whereNumber('id');
