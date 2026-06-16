@@ -4,17 +4,17 @@ namespace App\Http\Controllers\Api\Store\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
+use App\Http\Traits\LocationScope;
 use App\Models\StockTransfer;
 use App\Models\StockTransferItem;
 use App\Services\StockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class StockTransferController extends Controller
 {
-    use ApiResponse;
+    use ApiResponse, LocationScope;
 
     public function __construct(private StockService $stock) {}
 
@@ -25,6 +25,9 @@ class StockTransferController extends Controller
         }
 
         $query = StockTransfer::with('items.product:id,name,sku')->latest();
+
+        // Branch/warehouse managers only see transfers involving their location
+        $this->applyTransferScope($query, $request);
 
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));

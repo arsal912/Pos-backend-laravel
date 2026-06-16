@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Store\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
+use App\Http\Traits\LocationScope;
 use App\Models\InventoryItem;
 use App\Models\StockMovement;
 use Illuminate\Http\JsonResponse;
@@ -11,7 +12,7 @@ use Illuminate\Http\Request;
 
 class InventoryController extends Controller
 {
-    use ApiResponse;
+    use ApiResponse, LocationScope;
 
     /**
      * Current stock state across all products.
@@ -28,6 +29,10 @@ class InventoryController extends Controller
             'variant:id,name,sku',
             'warehouse:id,name,code',
         ]);
+
+        // Branch/warehouse managers are automatically scoped to their location;
+        // explicit filters are still honoured but only within their scope.
+        $this->applyInventoryScope($query, $request);
 
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->input('branch_id'));

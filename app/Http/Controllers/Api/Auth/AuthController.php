@@ -103,7 +103,7 @@ class AuthController extends Controller
      */
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user()->load(['store', 'branch', 'roles']);
+        $user = $request->user()->load(['store', 'branch', 'warehouse', 'roles']);
 
         return $this->successResponse(
             $this->formatUser($user),
@@ -141,8 +141,9 @@ class AuthController extends Controller
             'avatar' => $user->avatar,
             'is_super_admin' => $user->isSuperAdmin(),
             'is_active' => $user->is_active,
-            'store_id' => $user->store_id,
-            'branch_id' => $user->branch_id,
+            'store_id'     => $user->store_id,
+            'branch_id'    => $user->branch_id,
+            'warehouse_id' => $user->warehouse_id,
             'roles' => $user->getRoleNames(),
             'permissions' => $user->getAllPermissions()->pluck('name'),
             'store' => $user->store ? [
@@ -155,8 +156,15 @@ class AuthController extends Controller
                 'trial_ends_at' => $user->store->trial_ends_at,
             ] : null,
             'branch' => $user->branch ? [
-                'id' => $user->branch->id,
+                'id'   => $user->branch->id,
                 'name' => $user->branch->name,
+                'code' => $user->branch->code,
+            ] : null,
+            'warehouse' => $user->warehouse ? [
+                'id'   => $user->warehouse->id,
+                'name' => $user->warehouse->name,
+                'code' => $user->warehouse->code,
+                'type' => $user->warehouse->type,
             ] : null,
             'email_verified_at' => optional($user->email_verified_at)->toDateTimeString(),
         ];

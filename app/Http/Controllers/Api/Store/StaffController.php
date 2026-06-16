@@ -36,7 +36,8 @@ class StaffController extends Controller
                 'email'      => $u->email,
                 'phone'      => $u->phone,
                 'is_active'  => $u->is_active,
-                'branch_id'  => $u->branch_id,
+                'branch_id'    => $u->branch_id,
+                'warehouse_id' => $u->warehouse_id,
                 'last_login_at' => $u->last_login_at,
                 'created_at' => $u->created_at,
                 'roles'      => $u->roles->map(fn ($r) => [
@@ -63,8 +64,9 @@ class StaffController extends Controller
             'email'     => 'required|email|unique:users,email',
             'phone'     => 'nullable|string|max:20',
             'password'  => 'required|string|min:8',
-            'role_name' => 'required|string',
-            'branch_id' => 'nullable|integer',
+            'role_name'    => 'required|string',
+            'branch_id'    => 'nullable|integer',
+            'warehouse_id' => 'nullable|integer',
         ]);
 
         // Verify role exists and is visible to this store
@@ -87,7 +89,8 @@ class StaffController extends Controller
         $user->email      = $validated['email'];
         $user->phone      = $validated['phone'] ?? null;
         $user->password   = $validated['password'];
-        $user->branch_id  = $validated['branch_id'] ?? null;
+        $user->branch_id    = $validated['branch_id']    ?? null;
+        $user->warehouse_id = $validated['warehouse_id'] ?? null;
         $user->is_active  = true;
         $user->is_super_admin = false;
         // store_id excluded from $fillable — set directly
@@ -114,19 +117,21 @@ class StaffController extends Controller
         $member  = User::where('id', $id)->where('store_id', $storeId)->firstOrFail();
 
         $validated = $request->validate([
-            'name'      => 'sometimes|string|max:100',
-            'phone'     => 'nullable|string|max:20',
-            'password'  => 'nullable|string|min:8',
-            'branch_id' => 'nullable|integer',
-            'is_active' => 'sometimes|boolean',
-            'role_name' => 'sometimes|string',
+            'name'         => 'sometimes|string|max:100',
+            'phone'        => 'nullable|string|max:20',
+            'password'     => 'nullable|string|min:8',
+            'branch_id'    => 'nullable|integer',
+            'warehouse_id' => 'nullable|integer',
+            'is_active'    => 'sometimes|boolean',
+            'role_name'    => 'sometimes|string',
         ]);
 
-        if (isset($validated['name']))      $member->name      = $validated['name'];
-        if (isset($validated['phone']))     $member->phone     = $validated['phone'];
-        if (isset($validated['branch_id'])) $member->branch_id = $validated['branch_id'];
-        if (isset($validated['is_active'])) $member->is_active = $validated['is_active'];
-        if (isset($validated['password']))  $member->password  = $validated['password'];
+        if (isset($validated['name']))         $member->name         = $validated['name'];
+        if (isset($validated['phone']))        $member->phone        = $validated['phone'];
+        if (array_key_exists('branch_id', $validated))    $member->branch_id    = $validated['branch_id'];
+        if (array_key_exists('warehouse_id', $validated)) $member->warehouse_id = $validated['warehouse_id'];
+        if (isset($validated['is_active']))    $member->is_active    = $validated['is_active'];
+        if (isset($validated['password']))     $member->password     = $validated['password'];
         $member->save();
 
         // Update role if provided

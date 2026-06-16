@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\EmailVerificationToken;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -60,11 +61,33 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the branch this user belongs to.
+     * Get the branch this user is assigned to (branch managers).
      */
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * Get the warehouse this user is assigned to (warehouse managers).
+     */
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
+    /**
+     * For scoped roles: returns ['type' => 'branch'|'warehouse'|null, 'id' => int|null]
+     */
+    public function locationScope(): array
+    {
+        if ($this->hasRole('branch-manager') && $this->branch_id) {
+            return ['type' => 'branch', 'id' => $this->branch_id];
+        }
+        if ($this->hasRole('warehouse-manager') && $this->warehouse_id) {
+            return ['type' => 'warehouse', 'id' => $this->warehouse_id];
+        }
+        return ['type' => null, 'id' => null];
     }
 
     /**

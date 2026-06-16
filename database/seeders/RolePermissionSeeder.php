@@ -106,16 +106,38 @@ class RolePermissionSeeder extends Seeder
         ];
         $roles['store-admin'] = $permissions; // same as store-owner
 
+        // Branch Manager — full operations scoped to their assigned branch
+        $roles['branch-manager'] = [
+            'view-products', 'create-products', 'edit-products',
+            'create-sales', 'view-sales', 'refund-sales',
+            'view-inventory', 'manage-inventory', 'transfer-stock',
+            'view-customers', 'manage-customers',
+            'view-loyalty', 'manage-loyalty',
+            'manage-customer-credit',
+            'manage-expenses',
+            'view-reports',
+        ];
+
+        // Warehouse Manager — inventory and logistics scoped to their assigned warehouse
+        $roles['warehouse-manager'] = [
+            'view-products',
+            'view-inventory', 'manage-inventory', 'transfer-stock',
+            'view-suppliers', 'manage-suppliers',
+            'view-reports',
+        ];
+
         // Role metadata (description + color for UI)
         $roleMeta = [
-            'super-admin'    => ['description' => 'Full platform access — super admin only',               'color' => '#ef4444', 'is_system' => 1],
-            'store-owner'    => ['description' => 'Full store access including billing',                  'color' => '#6366f1', 'is_system' => 1],
-            'store-admin'    => ['description' => 'Full store access except billing',                     'color' => '#8b5cf6', 'is_system' => 1],
-            'store-manager'  => ['description' => 'Most store features — no billing or role management',  'color' => '#3b82f6', 'is_system' => 1],
-            'cashier'        => ['description' => 'POS sales, basic customer lookup',                     'color' => '#10b981', 'is_system' => 1],
-            'inventory-staff'=> ['description' => 'Products, inventory, suppliers — no POS sales',       'color' => '#f59e0b', 'is_system' => 1],
-            'finance'        => ['description' => 'Reports and expenses — no POS or product editing',    'color' => '#06b6d4', 'is_system' => 1],
-            'floor-staff'    => ['description' => 'Basic POS only — scan, sell, view customers',         'color' => '#84cc16', 'is_system' => 1],
+            'super-admin'       => ['description' => 'Full platform access — super admin only',                           'color' => '#ef4444', 'is_system' => 1],
+            'store-owner'       => ['description' => 'Full store access including billing',                               'color' => '#6366f1', 'is_system' => 1],
+            'store-admin'       => ['description' => 'Full store access except billing',                                  'color' => '#8b5cf6', 'is_system' => 1],
+            'store-manager'     => ['description' => 'Most store features — no billing or role management',               'color' => '#3b82f6', 'is_system' => 1],
+            'branch-manager'    => ['description' => 'Full branch operations — scoped to their assigned branch',          'color' => '#0ea5e9', 'is_system' => 1],
+            'warehouse-manager' => ['description' => 'Inventory & logistics — scoped to their assigned warehouse',        'color' => '#f97316', 'is_system' => 1],
+            'cashier'           => ['description' => 'POS sales, basic customer lookup',                                  'color' => '#10b981', 'is_system' => 1],
+            'inventory-staff'   => ['description' => 'Products, inventory, suppliers — no POS sales',                    'color' => '#f59e0b', 'is_system' => 1],
+            'finance'           => ['description' => 'Reports and expenses — no POS or product editing',                  'color' => '#06b6d4', 'is_system' => 1],
+            'floor-staff'       => ['description' => 'Basic POS only — scan, sell, view customers',                      'color' => '#84cc16', 'is_system' => 1],
         ];
 
         foreach ($roles as $roleName => $perms) {
