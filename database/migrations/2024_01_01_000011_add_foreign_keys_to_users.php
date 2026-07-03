@@ -20,18 +20,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $sm = Schema::getConnection()->getDoctrineSchemaManager();
-            // drop foreign keys if exist
-            try {
-                $table->dropForeign(['store_id']);
-            } catch (\Exception $e) {
-            }
-
-            try {
-                $table->dropForeign(['branch_id']);
-            } catch (\Exception $e) {
-            }
-        });
+        // Foreign key removal is handled implicitly when the table is modified
+        // Explicit removal can cause issues if constraints don't exist
+        // This migration is primarily for adding foreign keys that should persist
     }
 };

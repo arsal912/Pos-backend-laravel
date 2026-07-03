@@ -26,13 +26,8 @@ return new class extends Migration
             }
         });
 
-        Schema::table('payments', function (Blueprint $table) {
-            try {
-                $table->unique(['gateway', 'gateway_payment_id'], 'payments_gateway_gateway_payment_id_unique');
-            } catch (\Throwable $e) {
-                // Index may already exist.
-            }
-        });
+        // Note: The unique constraint on 'gateway' and 'gateway_payment_id' 
+        // is already defined in the create_subscriptions_and_payments_tables migration
     }
 
     public function down(): void
