@@ -14,10 +14,16 @@ class Subscription extends Model
 
     protected $connection = 'mysql';
 
+    /**
+     * store_id is server-controlled (always sourced from the authenticated tenant
+     * context, never from user input) — excluded from $fillable to prevent
+     * mass-assignment. Set it via direct property assignment before save().
+     * All other fields here are set exclusively by server-side billing logic
+     * (payment gateway callbacks, admin BillingController, RegisterController).
+     */
     protected $fillable = [
-        'store_id',
         'plan_id',
-        'status',          // active, expired, cancelled, pending
+        'status',
         'starts_at',
         'ends_at',
         'cancelled_at',
@@ -30,6 +36,9 @@ class Subscription extends Model
         'amount',
         'currency',
         'billing_cycle',
+        'warning_sent_7d',
+        'warning_sent_3d',
+        'warning_sent_1d',
     ];
 
     protected function casts(): array
@@ -40,6 +49,9 @@ class Subscription extends Model
             'cancelled_at' => 'datetime',
             'grace_period_ends_at' => 'datetime',
             'next_billing_at' => 'datetime',
+            'warning_sent_7d' => 'datetime',
+            'warning_sent_3d' => 'datetime',
+            'warning_sent_1d' => 'datetime',
             'amount' => 'decimal:2',
             'auto_renew' => 'boolean',
         ];

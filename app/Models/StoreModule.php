@@ -10,6 +10,8 @@ class StoreModule extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql'; // always central DB
+
     protected $fillable = [
         'store_id',
         'module_id',

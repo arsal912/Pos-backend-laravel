@@ -11,6 +11,8 @@ class PasswordResetToken extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql'; // always central DB
+
     protected $table = 'password_reset_tokens';
     protected $primaryKey = 'email';
     public $incrementing = false;

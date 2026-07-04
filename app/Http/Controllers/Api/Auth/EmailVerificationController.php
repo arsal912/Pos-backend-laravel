@@ -38,7 +38,9 @@ class EmailVerificationController extends Controller
 
         $user = $token->user;
         if (!$user->email_verified_at) {
-            $user->update(['email_verified_at' => now()]);
+            // Direct assignment — email_verified_at is server-controlled, not in $fillable.
+            $user->email_verified_at = now();
+            $user->save();
         }
 
         $token->update(['used_at' => now()]);

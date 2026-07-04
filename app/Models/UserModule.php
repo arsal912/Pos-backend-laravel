@@ -10,6 +10,8 @@ class UserModule extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql'; // always central DB
+
     protected $fillable = [
         'user_id',
         'module_id',

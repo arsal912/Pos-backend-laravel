@@ -32,6 +32,12 @@ return [
         'null' => [
             'transport' => 'null',
         ],
+
+        // Resend transport — registered by resend/resend-laravel package
+        // Set MAIL_MAILER=resend in .env to use for all system emails
+        'resend' => [
+            'transport' => 'resend',
+        ],
     ],
 
     'from' => [

@@ -10,6 +10,8 @@ class LandingPageSection extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql'; // always central DB
+
     protected $fillable = [
         'setting_id',
         'section_key',     // hero, features, pricing, testimonials, faq, footer, etc.

@@ -11,6 +11,8 @@ class Plan extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql'; // always central DB
+
     protected $fillable = [
         'name',
         'slug',
@@ -27,6 +29,9 @@ class Plan extends Model
         'is_active',
         'is_featured',
         'sort_order',
+        'stripe_price_id',
+        'stripe_product_id',
+        'paypal_plan_id',
     ];
 
     protected function casts(): array

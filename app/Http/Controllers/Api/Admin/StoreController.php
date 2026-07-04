@@ -4,9 +4,14 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
+use App\Jobs\SyncStoreAggregate;
 use App\Models\Store;
+use App\Models\StoreAggregate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class StoreController extends Controller
 {
@@ -56,10 +61,11 @@ class StoreController extends Controller
         ]);
 
         $store = Store::findOrFail($id);
-        $store->update([
-            'status' => $validated['status'],
-            'is_active' => $validated['status'] === 'active',
-        ]);
+        // status and is_active are excluded from $fillable — assign directly
+        // to prevent mass-assignment exposure on the Store model.
+        $store->status    = $validated['status'];
+        $store->is_active = $validated['status'] === 'active';
+        $store->save();
 
         return $this->successResponse($store, 'Store status updated');
     }
@@ -70,6 +76,56 @@ class StoreController extends Controller
         $store->delete();
 
         return $this->successResponse(null, 'Store deleted');
+    }
+
+    /**
+     * POST /admin/stores/{id}/logo — upload or replace a store's logo icon.
+     * Super admin can update any store's logo.
+     */
+    /**
+     * PUT /admin/stores/{id}/whatsapp — set the WhatsApp number for a store.
+     */
+    public function updateWhatsapp(Request $request, int $id): JsonResponse
+    {
+        $store = Store::findOrFail($id);
+
+        $validated = $request->validate([
+            'whatsapp_number' => 'nullable|string|max:20|regex:/^\+?[0-9\s\-]+$/',
+        ]);
+
+        $store->whatsapp_number = $validated['whatsapp_number'] ? preg_replace('/\s+/', '', $validated['whatsapp_number']) : null;
+        $store->save();
+
+        return $this->successResponse([
+            'whatsapp_number' => $store->whatsapp_number,
+        ], 'WhatsApp number updated.');
+    }
+
+    public function uploadLogo(Request $request, int $id): JsonResponse
+    {
+        $store = Store::findOrFail($id);
+
+        $request->validate([
+            'logo' => 'required|file|mimes:jpg,jpeg,png,webp,gif|max:2048', // 2 MB max, no SVG
+        ]);
+
+        // Delete previous logo if it exists
+        if ($store->logo && Storage::disk('local')->exists($store->logo)) {
+            Storage::disk('local')->delete($store->logo);
+        }
+
+        $ext  = $request->file('logo')->getClientOriginalExtension();
+        $path = "logos/{$store->id}/" . Str::uuid() . '.' . $ext;
+        Storage::disk('local')->put($path, file_get_contents($request->file('logo')->getRealPath()));
+
+        // logo is excluded from $fillable — assign directly
+        $store->logo = $path;
+        $store->save();
+
+        return $this->successResponse([
+            'logo'     => $path,
+            'logo_url' => url("/api/v1/store/files/{$path}"),
+        ], 'Store logo updated.');
     }
 
     /**
@@ -101,5 +157,84 @@ class StoreController extends Controller
                 'store_name' => $store->name,
             ],
         ], 'Impersonation token generated');
+    }
+
+    /**
+     * Per-store analytics — queries tenant DB on demand.
+     * GET /admin/stores/{id}/analytics
+     */
+    public function analytics(int $id, Request $request): JsonResponse
+    {
+        $store     = Store::findOrFail($id);
+        $aggregate = StoreAggregate::where('store_id', $id)->first();
+        $days      = (int) $request->input('days', 30);
+
+        $salesByDay   = [];
+        $topProducts  = [];
+        $customerGrowth = [];
+
+        try {
+            $store->run(function () use ($days, &$salesByDay, &$topProducts, &$customerGrowth) {
+                if (! DB::getSchemaBuilder()->hasTable('sales')) {
+                    return;
+                }
+
+                // Daily sales for last N days
+                $salesByDay = DB::table('sales')
+                    ->where('status', 'completed')
+                    ->whereDate('sale_date', '>=', now()->subDays($days)->toDateString())
+                    ->groupBy('sale_date')
+                    ->select('sale_date', DB::raw('COUNT(*) as count'), DB::raw('SUM(total) as amount'))
+                    ->orderBy('sale_date')
+                    ->get()
+                    ->map(fn ($r) => ['date' => $r->sale_date, 'count' => (int) $r->count, 'amount' => (float) $r->amount])
+                    ->toArray();
+
+                // Top 10 products this month
+                if (DB::getSchemaBuilder()->hasTable('sale_items')) {
+                    $topProducts = DB::table('sale_items')
+                        ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+                        ->where('sales.status', 'completed')
+                        ->whereMonth('sales.sale_date', now()->month)
+                        ->whereYear('sales.sale_date', now()->year)
+                        ->groupBy('sale_items.product_name')
+                        ->select(
+                            'sale_items.product_name',
+                            DB::raw('SUM(sale_items.quantity) as qty_sold'),
+                            DB::raw('SUM(sale_items.line_total) as revenue')
+                        )
+                        ->orderByDesc('revenue')
+                        ->limit(10)
+                        ->get()
+                        ->toArray();
+                }
+
+                // Customer growth (new customers per day)
+                if (DB::getSchemaBuilder()->hasTable('customers')) {
+                    $customerGrowth = DB::table('customers')
+                        ->whereNull('deleted_at')
+                        ->whereDate('created_at', '>=', now()->subDays($days)->toDateString())
+                        ->groupBy(DB::raw('DATE(created_at)'))
+                        ->select(DB::raw('DATE(created_at) as date'), DB::raw('COUNT(*) as count'))
+                        ->orderBy('date')
+                        ->get()
+                        ->map(fn ($r) => ['date' => $r->date, 'count' => (int) $r->count])
+                        ->toArray();
+                }
+            });
+        } catch (\Throwable $e) {
+            // Return whatever data we got
+        }
+
+        // Trigger a fresh sync in the background
+        SyncStoreAggregate::dispatch($store);
+
+        return $this->successResponse([
+            'store'           => $store->only(['id', 'name', 'slug', 'email', 'status']),
+            'aggregate'       => $aggregate,
+            'sales_by_day'    => $salesByDay,
+            'top_products'    => $topProducts,
+            'customer_growth' => $customerGrowth,
+        ]);
     }
 }

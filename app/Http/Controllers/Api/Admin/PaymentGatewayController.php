@@ -8,6 +8,7 @@ use App\Models\PaymentGateway;
 use App\Services\PaymentGateways\PaymentGatewayManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class PaymentGatewayController extends Controller
 {
@@ -24,22 +25,20 @@ class PaymentGatewayController extends Controller
     {
         $gateway = PaymentGateway::where('slug', $slug)->firstOrFail();
 
-        $validated = $request->validate([
-            'is_active' => 'sometimes|boolean',
-            'is_test_mode' => 'sometimes|boolean',
-            'credentials' => 'sometimes|array',
-        ]);
-
-        if (array_key_exists('is_active', $validated)) {
-            $gateway->is_active = $validated['is_active'];
+        // Accept boolean in any shape JSON, form, or proxy may send
+        if ($request->has('is_active')) {
+            $gateway->is_active = filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN);
         }
 
-        if (array_key_exists('is_test_mode', $validated)) {
-            $gateway->is_test_mode = $validated['is_test_mode'];
+        if ($request->has('is_test_mode')) {
+            $gateway->is_test_mode = filter_var($request->input('is_test_mode'), FILTER_VALIDATE_BOOLEAN);
         }
 
-        if (array_key_exists('credentials', $validated)) {
-            $gateway->credentials = $validated['credentials'];
+        if ($request->has('credentials')) {
+            $creds = $request->input('credentials');
+            if (is_array($creds)) {
+                $gateway->credentials = $creds;
+            }
         }
 
         $gateway->save();

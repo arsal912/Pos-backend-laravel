@@ -44,6 +44,15 @@ class DashboardController extends Controller
         $pendingPayments = Payment::where('status', 'pending')->count();
         $failedPayments = Payment::where('status', 'failed')->count();
 
+        $failedPayments7d = Payment::where('status', 'failed')
+            ->where('created_at', '>=', now()->subDays(7))
+            ->count();
+
+        $subscriptionsExpiring7d = Subscription::where('status', 'active')
+            ->where('ends_at', '<=', now()->addDays(7))
+            ->where('ends_at', '>=', now())
+            ->count();
+
         $totalBillingEvents = PaymentEvent::count();
         $billingEventsLast7Days = PaymentEvent::where('created_at', '>=', now()->subDays(7))->count();
         $billingEventsByType = PaymentEvent::selectRaw('event_type, count(*) as count')
@@ -79,6 +88,28 @@ class DashboardController extends Controller
                 ];
             });
 
+        // Platform-wide Phase 4 aggregates from store_aggregates.meta
+        $aggregates = \App\Models\StoreAggregate::all();
+
+        $platformSalesToday  = $aggregates->sum(fn ($a) => data_get($a->meta, 'sales_today_amount', 0));
+        $platformSalesMonth  = $aggregates->sum(fn ($a) => data_get($a->meta, 'sales_month_count', 0));
+        $totalProducts       = $aggregates->sum(fn ($a) => data_get($a->meta, 'total_products', 0));
+        $totalCustomers      = $aggregates->sum(fn ($a) => data_get($a->meta, 'total_customers', 0));
+        $lowStockStores      = $aggregates->filter(fn ($a) => (int) data_get($a->meta, 'low_stock_count', 0) > 0)->count();
+
+        // Top stores by today's revenue
+        $topStoresByRevenue = \App\Models\StoreAggregate::with('store:id,name,slug')
+            ->orderByDesc('today_revenue')
+            ->limit(5)
+            ->get()
+            ->map(fn ($a) => [
+                'store_name'    => $a->store?->name,
+                'today_revenue' => (float) $a->today_revenue,
+                'month_revenue' => (float) $a->month_revenue,
+                'total_revenue' => (float) $a->total_revenue,
+                'sales_today'   => (int) data_get($a->meta, 'sales_today_count', 0),
+            ]);
+
         $recentBillingEvents = PaymentEvent::with(['store:id,name', 'subscription:id,store_id,plan_id'])
             ->latest()
             ->limit(5)
@@ -110,7 +141,9 @@ class DashboardController extends Controller
                     'completed_revenue' => $completedRevenue,
                     'pending' => $pendingPayments,
                     'failed' => $failedPayments,
+                    'failed_7d' => $failedPayments7d,
                 ],
+                'subscriptions_expiring_7d' => $subscriptionsExpiring7d,
                 'billing_events' => [
                     'total' => $totalBillingEvents,
                     'last_7_days' => $billingEventsLast7Days,
@@ -121,10 +154,16 @@ class DashboardController extends Controller
                 'today_revenue' => $todayRevenue,
                 'expiring_soon' => $expiringSoon,
                 'new_stores_this_month' => $newStoresThisMonth,
+                'platform_sales_today'  => $platformSalesToday,
+                'platform_sales_month_count' => $platformSalesMonth,
+                'platform_total_products' => $totalProducts,
+                'platform_total_customers' => $totalCustomers,
+                'low_stock_stores' => $lowStockStores,
             ],
             'recent_errors' => $recentErrors,
             'recent_stores' => $recentStores,
             'recent_billing_events' => $recentBillingEvents,
+            'top_stores_by_revenue' => $topStoresByRevenue,
         ]);
     }
 }

@@ -10,6 +10,8 @@ class LandingPageSetting extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql'; // always central DB
+
     protected $fillable = [
         'is_enabled',                 // master toggle for entire landing page
         'maintenance_message',

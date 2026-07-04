@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\EmailVerificationToken;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -16,19 +17,22 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable, HasRoles;
 
+    protected $connection = 'mysql'; // always central DB
+
+    /**
+     * Only user-supplied registration/profile fields belong here.
+     * Server-controlled fields (is_super_admin, store_id, branch_id,
+     * email_verified_at, last_login_at, last_login_ip, login_attempts,
+     * locked_until) are intentionally excluded to prevent mass-assignment
+     * privilege escalation. Set them via direct property assignment.
+     */
     protected $fillable = [
         'name',
         'email',
         'password',
         'phone',
         'avatar',
-        'store_id',
-        'branch_id',
-        'is_super_admin',
         'is_active',
-        'last_login_at',
-        'last_login_ip',
-        'email_verified_at',
     ];
 
     protected $hidden = [
@@ -41,6 +45,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'locked_until' => 'datetime',
             'password' => 'hashed',
             'is_super_admin' => 'boolean',
             'is_active' => 'boolean',
@@ -56,11 +61,33 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the branch this user belongs to.
+     * Get the branch this user is assigned to (branch managers).
      */
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * Get the warehouse this user is assigned to (warehouse managers).
+     */
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
+    /**
+     * For scoped roles: returns ['type' => 'branch'|'warehouse'|null, 'id' => int|null]
+     */
+    public function locationScope(): array
+    {
+        if ($this->hasRole('branch-manager') && $this->branch_id) {
+            return ['type' => 'branch', 'id' => $this->branch_id];
+        }
+        if ($this->hasRole('warehouse-manager') && $this->warehouse_id) {
+            return ['type' => 'warehouse', 'id' => $this->warehouse_id];
+        }
+        return ['type' => null, 'id' => null];
     }
 
     /**
@@ -98,23 +125,23 @@ class User extends Authenticatable
     /**
      * Check if a specific module is enabled for this user.
      * Priority: user-level override > store-level setting > plan default.
+     * Result is cached for 5 minutes to avoid N+1 on every middleware check.
      */
     public function hasModuleAccess(string $moduleSlug): bool
     {
-        if ($this->isSuperAdmin()) {
-            return true;
-        }
+        if ($this->isSuperAdmin()) return true;
 
-        // Check user-level override first
-        $userModule = $this->userModules()
-            ->whereHas('module', fn ($q) => $q->where('slug', $moduleSlug))
-            ->first();
+        $cacheKey = "module_access:user:{$this->id}:{$moduleSlug}";
+        return (bool) cache()->remember($cacheKey, 300, function () use ($moduleSlug) {
+            $userModule = $this->userModules()
+                ->whereHas('module', fn ($q) => $q->where('slug', $moduleSlug))
+                ->first();
 
-        if ($userModule) {
-            return (bool) $userModule->is_enabled;
-        }
+            if ($userModule) {
+                return (bool) $userModule->is_enabled;
+            }
 
-        // Fallback to store-level
-        return $this->store?->hasModuleAccess($moduleSlug) ?? false;
+            return $this->store?->hasModuleAccess($moduleSlug) ?? false;
+        });
     }
 }
