@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\Store\NetworkInventoryController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\Catalog\BrandController;
 use App\Http\Controllers\Api\Store\Catalog\CategoryController;
+use App\Http\Controllers\Api\Store\Catalog\BarcodeLabelController;
 use App\Http\Controllers\Api\Store\Catalog\ProductController;
 use App\Http\Controllers\Api\Store\Catalog\TaxRateController;
 use App\Http\Controllers\Api\Store\Catalog\UnitController;
@@ -116,6 +117,7 @@ Route::middleware('module:products')->group(function () {
     // Products — lookup must be defined BEFORE /{id} to avoid route conflict
     Route::prefix('products')->group(function () {
         Route::get('lookup', [ProductController::class, 'lookup']);      // barcode/SKU fast lookup
+        Route::post('barcode-labels', [BarcodeLabelController::class, 'generate']); // bulk label images
         Route::get('/',      [ProductController::class, 'index']);
         Route::post('/',     [ProductController::class, 'store']);
 

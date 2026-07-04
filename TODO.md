@@ -57,10 +57,9 @@ Last updated: 2026-07-04
 **Issue:** The hold resume endpoint returns the hold data JSON but the frontend doesn't rebuild the cart from it.  
 **Fix:** On resume, parse `hold.data.items` and call `POST /pos/sales/{id}/items` for each item to rebuild the draft sale, then delete the hold.
 
-### I5. Barcode print shows text labels, not scannable images
+### I5. ~~Barcode print shows text labels, not scannable images~~ — FIXED 2026-07-05
 **Where:** `app/dashboard/products/[id]/print-barcode/page.tsx`  
-**Issue:** The print page shows text-only labels. No actual barcode image is generated.  
-**Fix:** Add backend endpoint `POST /products/{id}/barcode/print?qty=N` that uses `milon/barcode` to generate SVG/PNG barcodes and returns a PDF via laravel-dompdf. The `milon/barcode` package is already in `composer.json`.
+**Fix applied:** New `POST /store/products/barcode-labels` (`App\Http\Controllers\Api\Store\Catalog\BarcodeLabelController`) takes `{product_ids: []}` and renders a real SVG per product via `milon/barcode` (`DNS1D::getBarcodeSVG`) — EAN13 if the product's `barcode` field is a valid 12-13 digit code, else CODE128 over the barcode field or SKU (CODE128 encodes any alphanumeric string, so every product gets a scannable label even without a formal barcode assigned). Shared `components/catalog/BarcodeLabel.tsx` renders one label (real image + name + SKU + price) and is used by both this page and the new bulk **Barcode Generator** module (`/dashboard/products/barcode-generator` — select multiple products, per-product quantity, print sheet). PDF export was considered but skipped — the existing `window.print()` client-print pattern this page already used works fine for real images too (SVG prints natively), so no dompdf round-trip was needed. Went with SVG over PNG since it's crisp at any print DPI and simpler to inline in HTML.
 
 ---
 
