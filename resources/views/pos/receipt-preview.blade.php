@@ -18,9 +18,19 @@
 </style>
 </head>
 <body>
-  @if($template->show_logo && $store?->logo)
+  @php
+    $mergeContext = [
+        'store'    => $store,
+        'sale'     => ['number' => 'S-2026-00000001', 'date' => now()->format('d/m/Y H:i')],
+        'customer' => ['name' => 'Ahmed Khan'],
+        'cashier'  => ['name' => 'Demo User'],
+    ];
+    $logoDataUri = $template->show_logo ? receipt_logo_data_uri($store?->logo) : null;
+  @endphp
+
+  @if($logoDataUri)
   <div class="center" style="margin-bottom: 8px;">
-    <img src="{{ $store->logo }}" style="max-height: 60px;" />
+    <img src="{{ $logoDataUri }}" style="max-height: 60px;" />
   </div>
   @endif
 
@@ -32,7 +42,7 @@
   @endif
 
   @if($template->header_text)
-  <div class="center" style="margin: 6px 0; font-size: 11px; color: #555;">{{ $template->header_text }}</div>
+  <div class="center" style="margin: 6px 0; font-size: 11px; color: #555;">{{ receipt_merge_tags($template->header_text, $mergeContext) }}</div>
   @endif
 
   <div class="divider"></div>
@@ -81,7 +91,7 @@
 
   @if($template->footer_text)
   <div class="divider"></div>
-  <div class="center" style="font-size: 11px; color: #555; margin-top: 6px;">{{ $template->footer_text }}</div>
+  <div class="center" style="font-size: 11px; color: #555; margin-top: 6px;">{{ receipt_merge_tags($template->footer_text, $mergeContext) }}</div>
   @endif
 
   @if($template->show_qr_code)
@@ -94,5 +104,11 @@
   <div class="center" style="margin-top: 10px; font-size: 10px; color: #aaa;">
     Thank you for your purchase!
   </div>
+
+  @if($platformFooter?->is_enabled && $platformFooter?->footer_text)
+  <div class="divider"></div>
+  <div class="center" style="font-size: 9px; color: #999; margin-top: 4px;">{{ $platformFooter->footer_text }}</div>
+  <div class="center" style="font-size: 8px; color: #ccc; margin-top: 2px;">(set by platform admin — not editable here)</div>
+  @endif
 </body>
 </html>

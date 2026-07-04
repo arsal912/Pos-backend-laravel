@@ -1,6 +1,6 @@
 # Phase 4A + 4B + 4C + 4D — Known Rough Edges & Follow-up Tasks
 
-Last updated: 2026-06-05
+Last updated: 2026-07-04
 
 ---
 
@@ -27,6 +27,12 @@ Last updated: 2026-06-05
 **Issue:** New stores don't have these modules enabled by default unless the plan includes them.  
 **Fix:** Go to Admin → Modules → select the store → enable all Phase 4 modules. OR update the `PlanSeeder` to include these modules in default plans.
 
+### B5. ~~`user_modules` table missing from the central DB~~ — FIXED 2026-07-05
+**Where:** `App\Models\User::userModules()` / `hasModuleAccess()` — queries the central `mysql` connection (User's fixed `$connection`)  
+**Issue:** `store_modules` AND `user_modules` were both created by `database/migrations/tenant/2024_01_01_000005_create_store_and_user_modules_tables.php`, which only runs against per-store tenant DBs — but `Module`, `StoreModule`, and `UserModule` are all hardcoded to `$connection = 'mysql'` (central). Neither table existed centrally, so any store user hitting a `module:*`-gated route got `SQLSTATE[42S02]: Base table or view not found`. Confirmed via `/store/products`, `/store/reports/{slug}/run`.  
+**Fix applied:** Moved the migration from `database/migrations/tenant/` to `database/migrations/` (central) and ran it — the file was simply filed in the wrong directory; the two models it backs never belonged in a tenant DB. Also found and fixed the same unguarded-`cache()->remember()`-under-tenancy bug (see D1) in `Store::hasModuleAccess()` and `CommunicationsManager::resolve()`, which the fix exposed by letting requests reach further down the same fallback cascade.
+**Second finding surfaced by this fix, also FIXED 2026-07-05:** `GET /store/products` then failed with `Table 'pos_store_2.permissions' doesn't exist (Connection: tenant, ...)`. Root cause was NOT a tenancy/connection bug — `config('permission.models.permission')` was resolving to the base `Spatie\Permission\Models\Permission` instead of `App\Models\Permission` (which hardcodes `$connection = 'mysql'`). `bootstrap/cache/config.php` had been generated on 2026-07-03 19:15, and `config/permission.php`'s custom central-model bindings were added the next day (2026-07-04 16:05) — so the cached config silently shadowed the fix ever since it was written, and every `config()` call kept returning pre-edit values. Fixed by running `php artisan config:clear`. **Takeaway:** if you edit any `config/*.php` file in this environment and `bootstrap/cache/config.php` exists, your edit is silently ignored until you `config:clear` — check `ls -la bootstrap/cache/config.php` vs. the config file's mtime if a setting "isn't taking effect."
+
 ---
 
 ## 🟡 Important — Fix Soon
@@ -36,10 +42,10 @@ Last updated: 2026-06-05
 **Issue:** Clicking a variable product adds the first variant (or no variant) without asking which variant to use.  
 **Fix:** On click of a variable product, open a variant picker modal before calling `addProductToCart()`. Backend `products/lookup` already returns variant list for variable products.
 
-### I2. Receipt templates not wired to receipt generation
+### I2. ~~Receipt templates not wired to receipt generation~~ — FIXED 2026-07-05
 **Where:** `app/Http/Controllers/Api/Store/Pos/PosController::receipt()`  
-**Issue:** The receipt always uses the static Blade templates (`pos.receipt-thermal`, `pos.receipt-a4`). The custom templates created in Settings → Receipt Templates are stored but never used.  
-**Fix:** In `receipt()`, look up `ReceiptTemplate::where('is_default', true)->where('type', $format)->first()` and apply its settings (header_text, footer_text, show_logo, show_tax_breakdown) to the Blade template.
+**Fix applied:** `receipt()` now looks up `ReceiptTemplate::where('type', $format)->where('is_active', true)->where('is_default', true)->first()` and passes it to `pos.receipt-thermal`/`pos.receipt-a4`, which now apply `header_text`/`footer_text` (with `{{store.name}}`-style merge tags via the new `receipt_merge_tags()` helper in `app/helpers.php`), `show_logo` (rendered as a base64 data URI via `receipt_logo_data_uri()` — the store logo lives on the private `local` disk, so a data URI is what actually renders in both a print window and a dompdf PDF without needing a public/authenticated URL), `show_tax_breakdown`, and `custom_css`. Same wiring applied to `ReceiptTemplateController::preview()` / `receipt-preview.blade.php` so the settings-page preview matches real output.
+**Also added (new, was not part of this TODO item):** a platform-wide receipt footer, set only by the super admin at `PUT /admin/settings/receipt-footer` (`App\Models\PlatformReceiptSetting`, central DB singleton, same pattern as `LandingPageSetting`), unconditionally appended below the store's own footer on every receipt/PDF/preview. Store owners see it in their preview (labeled "not editable here") but have no route to change it.
 
 ### I3. POS draft sale not resumed on page load
 **Where:** `app/dashboard/pos/page.tsx` — `useEffect` init  
@@ -51,10 +57,10 @@ Last updated: 2026-06-05
 **Issue:** The hold resume endpoint returns the hold data JSON but the frontend doesn't rebuild the cart from it.  
 **Fix:** On resume, parse `hold.data.items` and call `POST /pos/sales/{id}/items` for each item to rebuild the draft sale, then delete the hold.
 
-### I5. Barcode print shows text labels, not scannable images
+### I5. ~~Barcode print shows text labels, not scannable images~~ — FIXED 2026-07-05
 **Where:** `app/dashboard/products/[id]/print-barcode/page.tsx`  
-**Issue:** The print page shows text-only labels. No actual barcode image is generated.  
-**Fix:** Add backend endpoint `POST /products/{id}/barcode/print?qty=N` that uses `milon/barcode` to generate SVG/PNG barcodes and returns a PDF via laravel-dompdf. The `milon/barcode` package is already in `composer.json`.
+**Fix applied:** New `POST /store/products/barcode-labels` (`App\Http\Controllers\Api\Store\Catalog\BarcodeLabelController`) takes `{product_ids: []}` and renders a real SVG per product via `milon/barcode` (`DNS1D::getBarcodeSVG`). If a product already has a `barcode`, it's used as-is (EAN13 if it's a valid 12-13 digit code, else CODE128). If not, a real EAN-13 is generated via `App\Services\BarcodeService::generateUniqueEan13()` (shared with the pre-existing single-product `generateBarcode` endpoint — same algorithm, one implementation) and **persisted to the product** before rendering, so it's not just a print-time stand-in. Generating a new barcode requires `edit-products`; printing an existing one only needs `view-products` (checked conditionally, so view-only users printing already-barcoded products aren't blocked). Shared `components/catalog/BarcodeLabel.tsx` renders one label (real image + name + SKU + price) and is used by both this page and the new bulk **Barcode Generator** module (`/dashboard/products/barcode-generator` — select multiple products, per-product quantity, print sheet; shows a "will create" badge for any selection without a barcode yet). PDF export was considered but skipped — the existing `window.print()` client-print pattern this page already used works fine for real images too (SVG prints natively), so no dompdf round-trip was needed. Went with SVG over PNG since it's crisp at any print DPI and simpler to inline in HTML.
+**Print layout fix (2026-07-05, same day):** actual print output (verified via `Page.printToPDF`, not a screenshot — screenshots don't respect `@media print`) was broken on both pages: the single-product page printed a **blank page** (dead pre-existing CSS `body > *:not(.print-area) { display: none; }` with no element ever having that class — deleted), and the bulk page printed the **entire dashboard sidebar** alongside the labels (the sidebar is rendered by `app/dashboard/layout.tsx`, so no `print:hidden` inside either page could ever reach it — fixed by adding `print:hidden` to the `<aside>` and `print:p-0 print:max-w-none` to the main content wrapper in the layout itself, so this fix covers every page under `/dashboard`, not just these two). Also dropped the print grid from 5 to 3 columns (5 made barcodes small/hard-to-scan) and stopped truncating product names in print.
 
 ---
 
@@ -152,6 +158,7 @@ Before going live, complete these:
 **Where:** `app/Reports/BaseReport::remember()`
 **Issue:** stancl's `CacheTenancyBootstrapper` applies tagged cache. The default file driver doesn't support tags, causing a `BadMethodCallException`. The `remember()` method uses the `array` driver as a fallback (in-process cache only — doesn't persist between requests).
 **Fix for production:** Change `CACHE_STORE=redis` in `.env` and uncomment `RedisTenancyBootstrapper` in `config/tenancy.php`. Redis supports tagged cache natively. Alternatively, configure a separate `database` cache driver for reports.
+**Update (2026-07-04):** the same `BadMethodCallException` was also hitting `App\Models\User::hasModuleAccess()`, which had a bare `cache()->remember()` with no guard — this broke every `module:*`-gated store route with `CACHE_STORE=database`, not just report caching. Fixed by wrapping it in the same try/catch-fallback pattern used here (falls back to an uncached lookup instead of a 500). If you add new `cache()->remember()` calls anywhere reachable from an authenticated store request, they need the same guard until `CACHE_STORE=redis` is set.
 
 ### D2. Report category filter for `sales-by-product` and `sales-by-category` show empty options
 **Where:** Filter schema — `options: []` for category/brand dropdowns

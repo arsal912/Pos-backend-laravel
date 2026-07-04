@@ -15,14 +15,26 @@
   .total-row td { font-weight: bold; background: #f9f9f9; }
   .payment-row td { background: #e8f5e9; }
   .footer { margin-top: 24px; text-align: center; color: #888; font-size: 11px; }
+  {{ $template?->custom_css ?? '' }}
 </style>
 </head>
 <body>
+  @php
+    $mergeContext = ['store' => $store, 'sale' => $sale, 'customer' => $sale->customer];
+    $logoDataUri  = ($template?->show_logo ?? true) ? receipt_logo_data_uri($store?->logo) : null;
+  @endphp
+
   <div class="header">
     <div>
+      @if($logoDataUri)
+      <img src="{{ $logoDataUri }}" style="max-height: 60px; margin-bottom: 6px;" />
+      @endif
       <div class="store-name">{{ $store->name ?? config('app.name') }}</div>
       @if($store?->address)<div>{{ $store->address }}</div>@endif
       @if($store?->phone)<div>Phone: {{ $store->phone }}</div>@endif
+      @if($template?->header_text)
+      <div style="margin-top:4px; font-size:11px; color:#666;">{{ receipt_merge_tags($template->header_text, $mergeContext) }}</div>
+      @endif
     </div>
     <div style="text-align:right;">
       <div class="receipt-title">RECEIPT</div>
@@ -63,7 +75,7 @@
   <!-- Totals -->
   <table style="width:300px; margin-left:auto;">
     <tr><td>Subtotal</td><td class="text-right">{{ number_format($sale->subtotal, 2) }}</td></tr>
-    @if($sale->tax_amount > 0)
+    @if($sale->tax_amount > 0 && ($template?->show_tax_breakdown ?? true))
     <tr><td>Tax</td><td class="text-right">{{ number_format($sale->tax_amount, 2) }}</td></tr>
     @endif
     @if($sale->discount_amount > 0)
@@ -86,6 +98,12 @@
     @endif
   </table>
 
-  <div class="footer">Thank you for your business!</div>
+  <div class="footer">
+    {{ $template?->footer_text ? receipt_merge_tags($template->footer_text, $mergeContext) : 'Thank you for your business!' }}
+  </div>
+
+  @if($platformFooter?->is_enabled && $platformFooter?->footer_text)
+  <div class="footer" style="margin-top:4px; color:#aaa;">{{ $platformFooter->footer_text }}</div>
+  @endif
 </body>
 </html>

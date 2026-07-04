@@ -13,14 +13,26 @@
   td { padding: 1px 0; }
   .store-name { font-size: 16px; font-weight: bold; }
   .total-row td { font-size: 13px; font-weight: bold; }
+  {{ $template?->custom_css ?? '' }}
 </style>
 </head>
 <body>
+  @php
+    $mergeContext = ['store' => $store, 'sale' => $sale, 'customer' => $sale->customer];
+    $logoDataUri  = ($template?->show_logo ?? true) ? receipt_logo_data_uri($store?->logo) : null;
+  @endphp
+
   <!-- Store Header -->
+  @if($logoDataUri)
+  <div class="center" style="margin-bottom: 6px;"><img src="{{ $logoDataUri }}" style="max-height: 60px;" /></div>
+  @endif
   <div class="center" style="margin-bottom: 8px;">
     <div class="store-name">{{ $store->name ?? config('app.name') }}</div>
     @if($store?->address)<div>{{ $store->address }}</div>@endif
     @if($store?->phone)<div>{{ $store->phone }}</div>@endif
+    @if($template?->header_text)
+    <div style="margin-top:4px;">{{ receipt_merge_tags($template->header_text, $mergeContext) }}</div>
+    @endif
   </div>
 
   <div class="divider"></div>
@@ -52,7 +64,7 @@
   <!-- Totals -->
   <table>
     <tr><td>Subtotal:</td><td class="right">{{ number_format($sale->subtotal, 2) }}</td></tr>
-    @if($sale->tax_amount > 0)
+    @if($sale->tax_amount > 0 && ($template?->show_tax_breakdown ?? true))
     <tr><td>Tax:</td><td class="right">{{ number_format($sale->tax_amount, 2) }}</td></tr>
     @endif
     @if($sale->discount_amount > 0)
@@ -77,6 +89,13 @@
   </table>
 
   <div class="divider"></div>
-  <div class="center" style="margin-top:8px; font-size:10px;">Thank you for your purchase!</div>
+  <div class="center" style="margin-top:8px; font-size:10px;">
+    {{ $template?->footer_text ? receipt_merge_tags($template->footer_text, $mergeContext) : 'Thank you for your purchase!' }}
+  </div>
+
+  @if($platformFooter?->is_enabled && $platformFooter?->footer_text)
+  <div class="divider"></div>
+  <div class="center" style="margin-top:4px; font-size:9px; color:#555;">{{ $platformFooter->footer_text }}</div>
+  @endif
 </body>
 </html>

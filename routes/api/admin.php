@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Admin\LandingPageController;
 use App\Http\Controllers\Api\Admin\BillingController;
 use App\Http\Controllers\Api\Admin\ModuleController;
 use App\Http\Controllers\Api\Admin\PaymentGatewayController;
+use App\Http\Controllers\Api\Admin\PlatformReceiptSettingController;
 use App\Http\Controllers\Api\Admin\StoreController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,6 +25,12 @@ use Illuminate\Support\Facades\Route;
 
 // Dashboard
 Route::get('dashboard', [DashboardController::class, 'index']);
+Route::prefix('dashboard/charts')->group(function () {
+    Route::get('sales-over-time', [DashboardController::class, 'salesOverTime']);
+    Route::get('top-stores', [DashboardController::class, 'topStoresByRevenue']);
+    Route::get('payments-breakdown', [DashboardController::class, 'paymentsBreakdown']);
+    Route::get('subscriptions-comparison', [DashboardController::class, 'subscriptionsComparison']);
+});
 
 // Stores / Tenants Management
 Route::prefix('stores')->group(function () {
@@ -35,6 +42,12 @@ Route::prefix('stores')->group(function () {
     Route::post('{id}/impersonate', [StoreController::class, 'impersonate']);
     Route::post('{id}/logo',    [StoreController::class, 'uploadLogo'])->whereNumber('id');
     Route::put('{id}/whatsapp', [StoreController::class, 'updateWhatsapp'])->whereNumber('id');
+});
+
+// Platform-wide receipt footer — applied to every store's receipts, super-admin only
+Route::prefix('settings/receipt-footer')->group(function () {
+    Route::get('/', [PlatformReceiptSettingController::class, 'show']);
+    Route::put('/', [PlatformReceiptSettingController::class, 'update']);
 });
 
 // Landing Page CMS

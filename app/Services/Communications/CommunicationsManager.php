@@ -54,10 +54,7 @@ class CommunicationsManager
 
     private function resolve(string $channel): SmsProviderInterface|EmailProviderInterface|WhatsAppProviderInterface
     {
-        // Cache provider config for 10 minutes to avoid DB hit per message
-        $key = "comm_provider:{$channel}";
-
-        $providerData = Cache::remember($key, 600, function () use ($channel) {
+        $resolveProvider = function () use ($channel) {
             $p = CommunicationProvider::where('channel', $channel)
                 ->where('is_default_for_channel', true)
                 ->where('is_active', true)
@@ -66,7 +63,18 @@ class CommunicationsManager
             if (! $p) return null;
 
             return ['slug' => $p->provider_slug, 'credentials' => $p->credentials ?? []];
-        });
+        };
+
+        // Cache provider config for 10 minutes to avoid DB hit per message. Tenancy
+        // auto-tags cache calls per-tenant; tag-less stores (database, file) throw
+        // on ->tags() when this runs inside a tenant request, so fall back to an
+        // uncached lookup instead of a 500.
+        $key = "comm_provider:{$channel}";
+        try {
+            $providerData = Cache::remember($key, 600, $resolveProvider);
+        } catch (\Throwable) {
+            $providerData = $resolveProvider();
+        }
 
         if (! $providerData) {
             throw new \RuntimeException(

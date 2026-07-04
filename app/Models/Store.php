@@ -118,8 +118,7 @@ class Store extends Model implements TenantWithDatabase
      */
     public function hasModuleAccess(string $moduleSlug): bool
     {
-        $cacheKey = "module_access:store:{$this->id}:{$moduleSlug}";
-        return (bool) cache()->remember($cacheKey, 300, function () use ($moduleSlug) {
+        $resolve = function () use ($moduleSlug) {
             $storeModule = $this->storeModules()
                 ->whereHas('module', fn ($q) => $q->where('slug', $moduleSlug))
                 ->first();
@@ -129,7 +128,16 @@ class Store extends Model implements TenantWithDatabase
             }
 
             return $this->activeSubscription?->plan?->hasModule($moduleSlug) ?? false;
-        });
+        };
+
+        // Tenancy auto-tags cache calls per-tenant; tag-less stores (database, file)
+        // throw on ->tags(), so fall back to an uncached lookup instead of a 500.
+        $cacheKey = "module_access:store:{$this->id}:{$moduleSlug}";
+        try {
+            return (bool) cache()->remember($cacheKey, 300, $resolve);
+        } catch (\Throwable) {
+            return (bool) $resolve();
+        }
     }
 
     /**
