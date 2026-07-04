@@ -8,6 +8,7 @@ use App\Models\InventoryItem;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
+use App\Services\BarcodeService;
 use App\Services\StockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ class ProductController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private StockService $stock) {}
+    public function __construct(private StockService $stock, private BarcodeService $barcodes) {}
 
     // -------------------------------------------------------------------------
     // Product list & show
@@ -371,7 +372,7 @@ class ProductController extends Controller
         }
 
         $product = Product::findOrFail($productId);
-        $barcode = $this->generateEan13();
+        $barcode = $this->barcodes->generateUniqueEan13();
 
         $product->update(['barcode' => $barcode]);
 
@@ -435,25 +436,4 @@ class ProductController extends Controller
         return $sku;
     }
 
-    private function generateEan13(): string
-    {
-        do {
-            $digits = '';
-            for ($i = 0; $i < 12; $i++) {
-                $digits .= random_int(0, 9);
-            }
-            // EAN-13 check digit
-            $sum = 0;
-            for ($i = 0; $i < 12; $i++) {
-                $sum += (int) $digits[$i] * ($i % 2 === 0 ? 1 : 3);
-            }
-            $checkDigit = (10 - ($sum % 10)) % 10;
-            $barcode    = $digits . $checkDigit;
-        } while (
-            Product::where('barcode', $barcode)->exists() ||
-            ProductVariant::where('barcode', $barcode)->exists()
-        );
-
-        return $barcode;
-    }
 }
