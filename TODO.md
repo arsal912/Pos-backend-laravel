@@ -1,6 +1,6 @@
 # Phase 4A + 4B + 4C + 4D — Known Rough Edges & Follow-up Tasks
 
-Last updated: 2026-06-05
+Last updated: 2026-07-04
 
 ---
 
@@ -26,6 +26,11 @@ Last updated: 2026-06-05
 **Where:** All Phase 4 store routes use `module:products`, `module:inventory`, `module:customers`, `module:pos-sales`  
 **Issue:** New stores don't have these modules enabled by default unless the plan includes them.  
 **Fix:** Go to Admin → Modules → select the store → enable all Phase 4 modules. OR update the `PlanSeeder` to include these modules in default plans.
+
+### B5. `user_modules` table missing from the central DB
+**Where:** `App\Models\User::userModules()` / `hasModuleAccess()` — queries the central `mysql` connection (User's fixed `$connection`)  
+**Issue:** The `user_modules` table was only ever created by a *tenant* migration (`database/migrations/tenant/2024_01_01_000005_create_store_and_user_modules_tables.php`), which runs against per-store tenant DBs, not the central DB. Any store user hitting a `module:*`-gated route gets `SQLSTATE[42S02]: Base table or view not found: user_modules`. Confirmed 2026-07-04 via `/store/reports/{slug}/run` (both `sales-summary` and `sales-by-day`) — this affects **every** module-gated store route, not just reports.  
+**Fix:** Either add a central-DB migration for `user_modules` (if per-user overrides are meant to be central), or move `userModules()`/`hasModuleAccess()` to resolve against the tenant connection instead. Needs an explicit decision — not patched speculatively.
 
 ---
 
@@ -152,6 +157,7 @@ Before going live, complete these:
 **Where:** `app/Reports/BaseReport::remember()`
 **Issue:** stancl's `CacheTenancyBootstrapper` applies tagged cache. The default file driver doesn't support tags, causing a `BadMethodCallException`. The `remember()` method uses the `array` driver as a fallback (in-process cache only — doesn't persist between requests).
 **Fix for production:** Change `CACHE_STORE=redis` in `.env` and uncomment `RedisTenancyBootstrapper` in `config/tenancy.php`. Redis supports tagged cache natively. Alternatively, configure a separate `database` cache driver for reports.
+**Update (2026-07-04):** the same `BadMethodCallException` was also hitting `App\Models\User::hasModuleAccess()`, which had a bare `cache()->remember()` with no guard — this broke every `module:*`-gated store route with `CACHE_STORE=database`, not just report caching. Fixed by wrapping it in the same try/catch-fallback pattern used here (falls back to an uncached lookup instead of a 500). If you add new `cache()->remember()` calls anywhere reachable from an authenticated store request, they need the same guard until `CACHE_STORE=redis` is set.
 
 ### D2. Report category filter for `sales-by-product` and `sales-by-category` show empty options
 **Where:** Filter schema — `options: []` for category/brand dropdowns

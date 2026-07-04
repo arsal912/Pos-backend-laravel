@@ -24,6 +24,12 @@ use Illuminate\Support\Facades\Route;
 
 // Dashboard
 Route::get('dashboard', [DashboardController::class, 'index']);
+Route::prefix('dashboard/charts')->group(function () {
+    Route::get('sales-over-time', [DashboardController::class, 'salesOverTime']);
+    Route::get('top-stores', [DashboardController::class, 'topStoresByRevenue']);
+    Route::get('payments-breakdown', [DashboardController::class, 'paymentsBreakdown']);
+    Route::get('subscriptions-comparison', [DashboardController::class, 'subscriptionsComparison']);
+});
 
 // Stores / Tenants Management
 Route::prefix('stores')->group(function () {

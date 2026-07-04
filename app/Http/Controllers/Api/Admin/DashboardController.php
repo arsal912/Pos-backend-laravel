@@ -12,6 +12,7 @@ use App\Models\StoreAggregate;
 use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
@@ -165,5 +166,74 @@ class DashboardController extends Controller
             'recent_billing_events' => $recentBillingEvents,
             'top_stores_by_revenue' => $topStoresByRevenue,
         ]);
+    }
+
+    /**
+     * Sales over time (payments-based)
+     */
+    public function salesOverTime(Request $request): JsonResponse
+    {
+        $days = (int) $request->query('days', 30);
+        $start = now()->subDays($days - 1)->startOfDay();
+
+        $rows = Payment::where('status', 'completed')
+            ->where('created_at', '>=', $start)
+            ->selectRaw("DATE(created_at) as date, SUM(amount) as revenue, COUNT(*) as count")
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get()
+            ->keyBy('date')
+            ->map(function ($r) {
+                return ['revenue' => (float) $r->revenue, 'count' => (int) $r->count];
+            })->toArray();
+
+        $series = [];
+        for ($d = $start->copy(); $d->lte(now()); $d->addDay()) {
+            $key = $d->toDateString();
+            $series[] = ['date' => $key, 'revenue' => $rows[$key]['revenue'] ?? 0.0, 'count' => $rows[$key]['count'] ?? 0];
+        }
+
+        return $this->successResponse(['series' => $series]);
+    }
+
+    public function topStoresByRevenue(Request $request): JsonResponse
+    {
+        $limit = (int) $request->query('limit', 10);
+        $rows = StoreAggregate::with('store:id,name')
+            ->orderByDesc('today_revenue')
+            ->limit($limit)
+            ->get()
+            ->map(function ($a) {
+                return [
+                    'store_id' => $a->store_id,
+                    'store_name' => $a->store?->name,
+                    'today_revenue' => (float) $a->today_revenue,
+                    'month_revenue' => (float) $a->month_revenue,
+                    'total_revenue' => (float) $a->total_revenue,
+                ];
+            });
+
+        return $this->successResponse(['top_stores' => $rows]);
+    }
+
+    public function paymentsBreakdown(): JsonResponse
+    {
+        $rows = Payment::where('status', 'completed')
+            ->selectRaw('COALESCE(gateway, "unknown") as gateway, SUM(amount) as amount, COUNT(*) as count')
+            ->groupBy('gateway')
+            ->get()
+            ->map(fn ($r) => ['gateway' => $r->gateway, 'amount' => (float) $r->amount, 'count' => (int) $r->count]);
+
+        return $this->successResponse(['breakdown' => $rows]);
+    }
+
+    public function subscriptionsComparison(): JsonResponse
+    {
+        $thisMonth = Subscription::whereYear('created_at', now()->year)->whereMonth('created_at', now()->month)->count();
+        $lastMonth = Subscription::whereYear('created_at', now()->subMonth()->year)->whereMonth('created_at', now()->subMonth()->month)->count();
+
+        $change = $lastMonth === 0 ? null : round((($thisMonth - $lastMonth) / max(1, $lastMonth)) * 100, 2);
+
+        return $this->successResponse(['this_month' => $thisMonth, 'last_month' => $lastMonth, 'percent_change' => $change]);
     }
 }

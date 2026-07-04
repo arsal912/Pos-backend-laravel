@@ -59,7 +59,7 @@ Last updated: 2026-06-14
 
 ## Known Issues
 
-See `docs/TODO.md` for the full list. Key items:
+See `TODO.md` (Phase 4) and `docs/TODO.md` (Phase 6) for the full lists. Key items:
 
 | Issue | Severity | Status |
 |-------|----------|--------|
@@ -68,6 +68,7 @@ See `docs/TODO.md` for the full list. Key items:
 | PWA icons are placeholder squares — branded icons needed | Low | Deferred |
 | Password reset tokens stored in plaintext | High | Deferred (requires rewrite) |
 | PayPal SDK abandoned upstream | High | Deferred (requires migration) |
+| `user_modules` table missing from central DB — breaks all `module:*`-gated store routes (see TODO.md B5) | High | Found 2026-07-04, not yet fixed |
 
 ---
 
