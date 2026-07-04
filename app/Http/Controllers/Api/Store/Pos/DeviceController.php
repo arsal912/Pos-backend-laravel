@@ -51,7 +51,7 @@ class DeviceController extends Controller
                 'device_uuid'   => $validated['device_uuid'],
                 'device_name'   => $validated['device_name'] ?? 'POS Terminal',
                 'user_agent'    => $validated['user_agent']  ?? $request->userAgent(),
-                'fingerprint'   => $validated['fingerprint'],
+                'fingerprint'   => $validated['fingerprint'] ?? null,
                 'last_seen_at'  => now(),
                 'is_active'     => true,
             ]);

@@ -71,7 +71,12 @@ class ReportController extends Controller
             return $this->errorResponse("Report '{$slug}' not found.", 404);
         }
 
-        $report  = $this->manager->get($slug);
+        $report = $this->manager->get($slug);
+
+        if (($module = $report->getRequiredModule()) && ! $request->user()->hasModuleAccess($module)) {
+            return $this->errorResponse("Access to the '{$module}' module is not enabled for your account.", 403);
+        }
+
         $filters = array_merge($report->getDefaultFilters(), $request->all());
 
         try {
@@ -95,11 +100,16 @@ class ReportController extends Controller
             return $this->errorResponse("Report '{$slug}' not found.", 404);
         }
 
+        $report = $this->manager->get($slug);
+
+        if (($module = $report->getRequiredModule()) && ! $request->user()->hasModuleAccess($module)) {
+            return $this->errorResponse("Access to the '{$module}' module is not enabled for your account.", 403);
+        }
+
         $validated = $request->validate([
             'format' => 'required|in:pdf,excel,csv',
         ]);
 
-        $report  = $this->manager->get($slug);
         $filters = array_merge($report->getDefaultFilters(), $request->except('format'));
 
         try {
