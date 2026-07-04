@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponse;
+use App\Models\PlatformReceiptSetting;
 use App\Models\ReceiptTemplate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -98,8 +99,9 @@ class ReceiptTemplateController extends Controller
         $store    = app('current_store');
 
         $html = view('pos.receipt-preview', [
-            'template' => $template,
-            'store'    => $store,
+            'template'       => $template,
+            'store'          => $store,
+            'platformFooter' => PlatformReceiptSetting::current(),
         ])->render();
 
         return response($html, 200, ['Content-Type' => 'text/html']);

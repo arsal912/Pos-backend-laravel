@@ -9,8 +9,10 @@ use App\Http\Traits\ApiResponse;
 use App\Models\CashDrawerSession;
 use App\Models\HoldSale;
 use App\Models\InventoryItem;
+use App\Models\PlatformReceiptSetting;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\ReceiptTemplate;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalePayment;
@@ -427,11 +429,20 @@ class PosController extends Controller
         $sale = Sale::with(['items.product', 'payments', 'customer'])->findOrFail($saleId);
         $store = app('current_store');
 
-        $template = $request->input('format', 'thermal') === 'a4'
-            ? 'pos.receipt-a4'
-            : 'pos.receipt-thermal';
+        $format = $request->input('format', 'thermal') === 'a4' ? 'a4' : 'thermal';
+        $view   = $format === 'a4' ? 'pos.receipt-a4' : 'pos.receipt-thermal';
 
-        $html = view($template, ['sale' => $sale, 'store' => $store])->render();
+        $template = ReceiptTemplate::where('type', $format)
+            ->where('is_active', true)
+            ->where('is_default', true)
+            ->first();
+
+        $html = view($view, [
+            'sale'           => $sale,
+            'store'          => $store,
+            'template'       => $template,
+            'platformFooter' => PlatformReceiptSetting::current(),
+        ])->render();
 
         if ($request->boolean('pdf')) {
             $pdf = Pdf::loadHTML($html);

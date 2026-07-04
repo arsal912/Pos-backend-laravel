@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Admin\LandingPageController;
 use App\Http\Controllers\Api\Admin\BillingController;
 use App\Http\Controllers\Api\Admin\ModuleController;
 use App\Http\Controllers\Api\Admin\PaymentGatewayController;
+use App\Http\Controllers\Api\Admin\PlatformReceiptSettingController;
 use App\Http\Controllers\Api\Admin\StoreController;
 use Illuminate\Support\Facades\Route;
 
@@ -41,6 +42,12 @@ Route::prefix('stores')->group(function () {
     Route::post('{id}/impersonate', [StoreController::class, 'impersonate']);
     Route::post('{id}/logo',    [StoreController::class, 'uploadLogo'])->whereNumber('id');
     Route::put('{id}/whatsapp', [StoreController::class, 'updateWhatsapp'])->whereNumber('id');
+});
+
+// Platform-wide receipt footer — applied to every store's receipts, super-admin only
+Route::prefix('settings/receipt-footer')->group(function () {
+    Route::get('/', [PlatformReceiptSettingController::class, 'show']);
+    Route::put('/', [PlatformReceiptSettingController::class, 'update']);
 });
 
 // Landing Page CMS

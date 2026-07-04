@@ -42,10 +42,10 @@ Last updated: 2026-07-04
 **Issue:** Clicking a variable product adds the first variant (or no variant) without asking which variant to use.  
 **Fix:** On click of a variable product, open a variant picker modal before calling `addProductToCart()`. Backend `products/lookup` already returns variant list for variable products.
 
-### I2. Receipt templates not wired to receipt generation
+### I2. ~~Receipt templates not wired to receipt generation~~ — FIXED 2026-07-05
 **Where:** `app/Http/Controllers/Api/Store/Pos/PosController::receipt()`  
-**Issue:** The receipt always uses the static Blade templates (`pos.receipt-thermal`, `pos.receipt-a4`). The custom templates created in Settings → Receipt Templates are stored but never used.  
-**Fix:** In `receipt()`, look up `ReceiptTemplate::where('is_default', true)->where('type', $format)->first()` and apply its settings (header_text, footer_text, show_logo, show_tax_breakdown) to the Blade template.
+**Fix applied:** `receipt()` now looks up `ReceiptTemplate::where('type', $format)->where('is_active', true)->where('is_default', true)->first()` and passes it to `pos.receipt-thermal`/`pos.receipt-a4`, which now apply `header_text`/`footer_text` (with `{{store.name}}`-style merge tags via the new `receipt_merge_tags()` helper in `app/helpers.php`), `show_logo` (rendered as a base64 data URI via `receipt_logo_data_uri()` — the store logo lives on the private `local` disk, so a data URI is what actually renders in both a print window and a dompdf PDF without needing a public/authenticated URL), `show_tax_breakdown`, and `custom_css`. Same wiring applied to `ReceiptTemplateController::preview()` / `receipt-preview.blade.php` so the settings-page preview matches real output.
+**Also added (new, was not part of this TODO item):** a platform-wide receipt footer, set only by the super admin at `PUT /admin/settings/receipt-footer` (`App\Models\PlatformReceiptSetting`, central DB singleton, same pattern as `LandingPageSetting`), unconditionally appended below the store's own footer on every receipt/PDF/preview. Store owners see it in their preview (labeled "not editable here") but have no route to change it.
 
 ### I3. POS draft sale not resumed on page load
 **Where:** `app/dashboard/pos/page.tsx` — `useEffect` init  
