@@ -441,9 +441,11 @@ Route::prefix('expenses')->group(function () {
 });
 
 // ============================================================================
-// PHASE 4D — REPORTS  (module: reports, permission: view-reports)
+// PHASE 4D — REPORTS  (permission: view-reports; per-report module check
+// happens inside ReportController — there is no single blanket "reports"
+// module any plan can grant, each report declares its own via getRequiredModule())
 // ============================================================================
-Route::middleware('module:reports')->prefix('reports')->group(function () {
+Route::prefix('reports')->group(function () {
     Route::get('/',                     [ReportController::class, 'index']);
     Route::get('{slug}/schema',         [ReportController::class, 'schema']);
     Route::post('{slug}/run',           [ReportController::class, 'run']);
@@ -532,4 +534,3 @@ Route::prefix('network')->group(function () {
 // ============================================================================
 Route::middleware('module:pos-sales')->get('pos/ping', fn () => response()->json(['success' => true, 'module' => 'pos-sales']));
 Route::middleware('module:inventory')->get('inventory/ping', fn () => response()->json(['success' => true, 'module' => 'inventory']));
-Route::middleware('module:reports')->get('reports/ping', fn () => response()->json(['success' => true, 'module' => 'reports']));

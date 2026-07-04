@@ -1,10 +1,17 @@
 # Phase 4A + 4B + 4C + 4D — Known Rough Edges & Follow-up Tasks
 
-Last updated: 2026-07-04
+Last updated: 2026-07-05
 
 ---
 
 ## 🔴 Blocking / Must-fix before Production
+
+### B0. ~~Entire reports subsystem was unreachable on every plan~~ — FIXED 2026-07-05
+**Where:** `routes/api/store.php` (`Route::middleware('module:reports')->prefix('reports')->...`), `app/Http/Controllers/Api/Store/ReportController.php`  
+**Issue:** The whole `/store/reports/*` route group (sales-summary, stock-on-hand, sales-by-day, every report, plus scheduled reports) was gated behind a blanket `module:reports` middleware check — but no module named exactly `reports` exists anywhere in the system, and 0 of the 4 plans grant it (confirmed via `Module::where('slug','reports')->exists()` → false). This wasn't a per-store misconfiguration — **it was structurally impossible for any store on any plan to ever pass this gate.** Every report call 403'd with "Access to the 'reports' module is not enabled for your account," which silently broke the store dashboard's stat cards (revenue/transactions/low-stock all fetch via reports, wrapped in `.catch(() => null)`) and the receipt-based Sales Trend chart added earlier.
+Separately: `ReportController` never actually checked each report's own `getRequiredModule()` (e.g. `SalesSummaryReport` → `sales-reports`, `ProfitLossReport` → `profit-loss`) — that per-report gating was designed (every report class implements it) but never wired up anywhere, so it was dead code.
+**Fix applied:** Removed the broken blanket `module:reports` middleware (and the unused `reports/ping` capability-check route, same broken module) from the routes. Added real enforcement of `$report->getRequiredModule()` inside `ReportController::run()` and `::export()` — checks `$request->user()->hasModuleAccess($module)` only when the specific report declares one, so a report needing e.g. `financial-reports` still correctly blocks a plan without it, while everything else (view-reports permission, per-report granular modules) works as originally designed. Verified: `sales-summary`/`stock-on-hand` went from 403 to real data for the demo store's Free Trial plan; store dashboard stat cards now show correct revenue/transactions/stock/customers instead of falling back to 0.
+Also fixed while in there: `app/dashboard/page.tsx`'s "Total Customers" card read `stats.total_customers`, but nothing in the page ever fetched or set that field — always showed 0 regardless of real count, independent of the reports bug above. Added a `GET /store/customers?per_page=1` call reading `meta.pagination.total`.
 
 ### B1. Branch ID hardcoded to 1
 **Where:** PosController, StockAdjustmentController, cash drawer endpoints, frontend pages  
@@ -16,11 +23,12 @@ Last updated: 2026-07-04
 **Issue:** Uses `COUNT(*) + 1` which is not atomic. Two concurrent sales could get the same number.  
 **Fix:** Use a DB sequence or an `invoice_counters`-style atomic counter table (same pattern as billing invoice numbers).
 
-### B3. Queue worker required for aggregate sync
+### B3. Queue worker required for aggregate sync — applied dev fix 2026-07-05
 **Where:** `SyncStoreAggregate` job, `SaleObserver`  
 **Issue:** Without a queue worker, `SyncStoreAggregate` jobs pile up silently. Admin dashboard stays stale.  
 **Fix (development):** Set `QUEUE_CONNECTION=sync` in `.env` for immediate synchronous processing.  
 **Fix (production):** Run `php artisan queue:work --daemon` as a supervised process.
+**Applied 2026-07-05:** hit this directly — `/admin/stores/{id}/analytics` showed 0 for customers/products/revenue because `store_aggregates` had no row at all for that store (jobs were queuing into the `jobs` table with `QUEUE_CONNECTION=database` and no worker ever consuming them). Set `QUEUE_CONNECTION=sync` in `.env`, ran `php artisan config:clear` (stale config cache bit us on this exact setting before, see D1/report-cache memory), then `php artisan store-aggregates:sync` to backfill every store immediately. This is a **local dev-only** fix — production still needs a real supervised `queue:work` process; `sync` mode blocks the request thread on every dispatched job (fine for local, wrong for production throughput).
 
 ### B4. Module access for Phase 4 routes
 **Where:** All Phase 4 store routes use `module:products`, `module:inventory`, `module:customers`, `module:pos-sales`  
