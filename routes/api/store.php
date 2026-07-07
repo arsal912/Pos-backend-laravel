@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\Store\BranchController;
 use App\Http\Controllers\Api\Store\WarehouseController;
 use App\Http\Controllers\Api\Store\NetworkInventoryController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
+use App\Http\Controllers\Api\Store\WeighingScaleSettingController;
 use App\Http\Controllers\Api\Store\Catalog\BrandController;
 use App\Http\Controllers\Api\Store\Catalog\CategoryController;
 use App\Http\Controllers\Api\Store\Catalog\BarcodeLabelController;
@@ -392,6 +393,12 @@ Route::prefix('settings')->group(function () {
     Route::put('/',    [StoreSettingsController::class, 'update']);
     Route::post('logo',      [StoreSettingsController::class, 'uploadLogo']);
     Route::put('whatsapp',   [StoreSettingsController::class, 'updateWhatsapp']);
+});
+
+// Weighing scale settings (manual entry only — no hardware/serial integration)
+Route::prefix('settings/weighing-scale')->group(function () {
+    Route::get('/', [WeighingScaleSettingController::class, 'show']);
+    Route::put('/', [WeighingScaleSettingController::class, 'update']);
 });
 
 // ── Role management (requires manage-users) ──────────────────────────────────

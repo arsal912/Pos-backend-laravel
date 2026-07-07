@@ -51,7 +51,7 @@ class PosSyncController extends Controller
             'id', 'sku', 'barcode', 'name', 'category_id', 'brand_id',
             'selling_price', 'cost_price', 'tax_rate_id', 'unit_id',
             'track_stock', 'allow_negative_stock', 'low_stock_threshold',
-            'image', 'updated_at',
+            'is_weightable', 'weight_unit', 'image', 'updated_at',
         ]);
 
         // Batch-load stock in 2 queries (product-level + variant-level)
@@ -88,6 +88,8 @@ class PosSyncController extends Controller
                 'tracks_stock'         => (bool) $p->track_stock,
                 'allow_negative_stock' => (bool) $p->allow_negative_stock,
                 'low_stock_threshold'  => (int) ($p->low_stock_threshold ?? 0),
+                'is_weightable'        => (bool) $p->is_weightable,
+                'weight_unit'          => $p->weight_unit,
                 'current_stock'        => max(0, (float) ($stockMap[$p->id] ?? 0)),
                 'image_url'            => $p->image ? url($p->image) : null,
                 'variants'             => $variants,

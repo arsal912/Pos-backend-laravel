@@ -410,6 +410,7 @@ class ProductController extends Controller
             'allow_negative_stock' => 'sometimes|boolean',
             'low_stock_threshold'  => 'nullable|integer|min:0',
             'is_weightable'        => 'sometimes|boolean',
+            'weight_unit'          => 'sometimes|nullable|in:g,kg',
             'is_active'            => 'sometimes|boolean',
         ]);
     }

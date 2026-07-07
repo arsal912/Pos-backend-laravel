@@ -128,11 +128,15 @@ class PosController extends Controller
             : round($unitPrice * $qty * $taxRate / 100, 2);
         $lineTotal = round($unitPrice * $qty, 2);
 
-        // Merge with existing row if same product/variant
-        $existing = $sale->items()
-            ->where('product_id', $validated['product_id'])
-            ->where('variant_id', $variantId)
-            ->first();
+        // Merge with existing row if same product/variant — except for weightable
+        // products, where each weigh-in is a distinct line (matches the offline cart,
+        // which never merges weightable lines either).
+        $existing = $product->is_weightable
+            ? null
+            : $sale->items()
+                ->where('product_id', $validated['product_id'])
+                ->where('variant_id', $variantId)
+                ->first();
 
         if ($existing) {
             $newQty   = (float) $existing->quantity + $qty;
