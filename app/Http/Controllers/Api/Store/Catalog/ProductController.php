@@ -409,6 +409,7 @@ class ProductController extends Controller
             'track_stock'          => 'sometimes|boolean',
             'allow_negative_stock' => 'sometimes|boolean',
             'low_stock_threshold'  => 'nullable|integer|min:0',
+            'is_weightable'        => 'sometimes|boolean',
             'is_active'            => 'sometimes|boolean',
         ]);
     }

@@ -18,7 +18,7 @@ class Product extends Model
         'description', 'image', 'gallery', 'type', 'unit_id',
         'cost_price', 'selling_price', 'msrp', 'tax_rate_id',
         'track_stock', 'allow_negative_stock', 'low_stock_threshold',
-        'loyalty_points_multiplier',
+        'loyalty_points_multiplier', 'is_weightable',
         'is_active', 'created_by', 'updated_by',
     ];
 
@@ -28,6 +28,7 @@ class Product extends Model
             'gallery'              => 'array',
             'track_stock'          => 'boolean',
             'allow_negative_stock' => 'boolean',
+            'is_weightable'        => 'boolean',
             'is_active'                   => 'boolean',
             'loyalty_points_multiplier'   => 'decimal:2',
             'cost_price'           => 'decimal:2',
